@@ -1,0 +1,29 @@
+export interface Person {
+  id: string;
+  tree_id: string;
+  given_name: string | null;
+  family_name: string | null;
+  maiden_name: string | null;
+  nickname: string | null;
+  birth_date: string | null;
+  birth_date_qualifier: string | null;
+  birth_date_2: string | null;
+  birth_date_original: string | null;
+  death_date: string | null;
+  death_date_qualifier: string | null;
+  death_date_2: string | null;
+  death_date_original: string | null;
+  birth_location: string | null;
+  birth_place_id: string | null;
+  death_location: string | null;
+  death_place_id: string | null;
+  gender: string | null;
+  is_living: boolean | null;
+  occupation: string | null;
+  nationalities: string[] | null;
+  education: string | null;
+  bio: string | null;
+  profile_picture_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
