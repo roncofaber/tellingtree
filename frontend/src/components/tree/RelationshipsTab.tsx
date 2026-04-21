@@ -90,20 +90,37 @@ export function RelationshipsTab({ treeId }: Props) {
 
   const [search, setSearch] = useState("");
 
-  const displayedRels = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (rels?.items ?? [])
-      .filter((r) => PRIMARY_TYPES.has(r.relationship_type))
-      .filter((r) => typeFilter === "all" || r.relationship_type === typeFilter)
-      .filter((r) => !q || personName(r.person_a_id).toLowerCase().includes(q) || personName(r.person_b_id).toLowerCase().includes(q));
-  }, [rels, typeFilter, search, persons]); // eslint-disable-line
-
   const personName = (id: string) => {
     const p = persons?.items.find((p) => p.id === id);
     return p
       ? [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed"
       : id.slice(0, 8);
   };
+
+  const displayedRels = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    // Deduplicate: the API auto-creates inverse records (parent↔child, spouse↔spouse).
+    // "child" records are always paired with a "parent" record — drop them first so
+    // the dedup never has to guess which direction survives. Then collapse symmetric
+    // spouse/partner pairs by sorted person IDs.
+    const seen = new Set<string>();
+    const deduped = (rels?.items ?? [])
+      .filter((r) => r.relationship_type !== "child")
+      .filter((r) => {
+        const key = `${r.relationship_type}:${[r.person_a_id, r.person_b_id].sort().join(":")}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    return deduped
+      .filter((r) => PRIMARY_TYPES.has(r.relationship_type))
+      .filter((r) => typeFilter === "all" || r.relationship_type === typeFilter)
+      .filter((r) => !q || personName(r.person_a_id).toLowerCase().includes(q) || personName(r.person_b_id).toLowerCase().includes(q))
+      .sort((a, b) => {
+        const cmp = personName(a.person_a_id).localeCompare(personName(b.person_a_id));
+        return cmp !== 0 ? cmp : personName(a.person_b_id).localeCompare(personName(b.person_b_id));
+      });
+  }, [rels, typeFilter, search, persons]); // eslint-disable-line
 
   const createMut = useMutation({
     mutationFn: () =>

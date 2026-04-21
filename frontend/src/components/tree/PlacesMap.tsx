@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { useEffect, useMemo, useRef } from "react";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet.heat";
 import type { Place } from "@/types/place";
@@ -13,6 +13,7 @@ interface Props {
   selectedPlaceId?: string | null;
   onMarkerClick?: (placeId: string) => void;
   heatmap?: boolean;
+  showMigration?: boolean;
 }
 
 const defaultIcon = L.icon({
@@ -63,8 +64,8 @@ function HeatmapLayer({ places }: { places: PlaceWithPersons[] }) {
     const points: [number, number, number][] = [];
     for (const p of places) {
       if (p.lat == null || p.lon == null) continue;
-      const intensity = p.persons ? p.persons.length : 1;
-      points.push([p.lat, p.lon, intensity]);
+      const count = p.persons ? p.persons.length : 1;
+      points.push([p.lat, p.lon, Math.log(count + 1)]);
     }
     if (points.length > 0) {
       const heat = (L as unknown as { heatLayer: (pts: [number, number, number][], opts: object) => L.Layer }).heatLayer(points, {
@@ -85,7 +86,111 @@ function HeatmapLayer({ places }: { places: PlaceWithPersons[] }) {
   return null;
 }
 
-export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = false }: Props) {
+// Draws dashed polylines between birth and death places for each person.
+// Deduplicates by place-pair so shared routes are drawn once with increased weight.
+function MigrationLayer({ places }: { places: PlaceWithPersons[] }) {
+  const lines = useMemo(() => {
+    const placeById = new Map<string, PlaceWithPersons>();
+    for (const p of places) placeById.set(p.id, p);
+
+    const birthByPerson = new Map<string, string>();
+    const deathByPerson = new Map<string, string>();
+    for (const place of places) {
+      for (const pr of place.persons ?? []) {
+        if (pr.field === "birth") birthByPerson.set(pr.id, place.id);
+        else if (pr.field === "death") deathByPerson.set(pr.id, place.id);
+      }
+    }
+
+    // Aggregate by place-pair key to merge duplicate routes
+    const byPair = new Map<string, { from: [number, number]; to: [number, number]; count: number; names: string[] }>();
+    for (const [personId, birthPlaceId] of birthByPerson) {
+      const deathPlaceId = deathByPerson.get(personId);
+      if (!deathPlaceId || deathPlaceId === birthPlaceId) continue;
+      const bp = placeById.get(birthPlaceId);
+      const dp = placeById.get(deathPlaceId);
+      if (!bp?.lat || !bp.lon || !dp?.lat || !dp.lon) continue;
+
+      const pairKey = `${birthPlaceId}-${deathPlaceId}`;
+      const person = bp.persons?.find(p => p.id === personId);
+      const name = person?.name ?? "";
+      if (byPair.has(pairKey)) {
+        const entry = byPair.get(pairKey)!;
+        entry.count++;
+        if (name) entry.names.push(name);
+      } else {
+        byPair.set(pairKey, {
+          from: [bp.lat, bp.lon],
+          to: [dp.lat, dp.lon],
+          count: 1,
+          names: name ? [name] : [],
+        });
+      }
+    }
+    return [...byPair.entries()].map(([key, v]) => ({ key, ...v }));
+  }, [places]);
+
+  return (
+    <>
+      {lines.map(line => (
+        <Polyline
+          key={line.key}
+          positions={[line.from, line.to]}
+          color="#3b82f6"
+          weight={Math.min(1 + line.count, 5)}
+          opacity={0.65}
+          dashArray="5 6"
+        >
+          <Popup>
+            <div className="text-xs space-y-0.5 min-w-[120px]">
+              <p className="font-semibold text-slate-700">Migration</p>
+              {line.names.slice(0, 5).map((n, i) => <p key={i}>{n}</p>)}
+              {line.names.length > 5 && <p className="text-slate-400">+{line.names.length - 5} more</p>}
+            </div>
+          </Popup>
+        </Polyline>
+      ))}
+    </>
+  );
+}
+
+// ─── Coordinate picker ────────────────────────────────────────────────────────
+
+function MapClickHandler({ onPick }: { onPick: (lat: number, lon: number) => void }) {
+  useMapEvents({ click: (e) => onPick(e.latlng.lat, e.latlng.lng) });
+  return null;
+}
+
+export function PickerMap({
+  lat, lon, onPick,
+}: {
+  lat: number | null;
+  lon: number | null;
+  onPick: (lat: number, lon: number) => void;
+}) {
+  const center: [number, number] = lat != null && lon != null ? [lat, lon] : [20, 0];
+  return (
+    <MapContainer
+      center={center}
+      zoom={lat != null ? 10 : 2}
+      className="h-48 w-full rounded-lg cursor-crosshair"
+      scrollWheelZoom
+    >
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <MapClickHandler onPick={onPick} />
+      {lat != null && lon != null && (
+        <Marker position={[lat, lon]} icon={defaultIcon} />
+      )}
+    </MapContainer>
+  );
+}
+
+// ─── Main map ─────────────────────────────────────────────────────────────────
+
+export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = false, showMigration = false }: Props) {
   const geocoded = places.filter((p) => p.lat !== null && p.lon !== null);
   if (geocoded.length === 0) {
     return (
@@ -122,11 +227,14 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
                 <p className="font-semibold">{p.display_name}</p>
                 {p.persons && p.persons.length > 0 && (
                   <div className="text-xs text-slate-600 border-t pt-1 mt-1 space-y-0.5">
-                    {p.persons.map((pr) => (
+                    {p.persons.slice(0, 6).map((pr) => (
                       <p key={`${pr.id}-${pr.field}`}>
                         {pr.name} <span className="text-slate-400">({pr.field})</span>
                       </p>
                     ))}
+                    {p.persons.length > 6 && (
+                      <p className="text-slate-400">+{p.persons.length - 6} more</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -134,6 +242,7 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
           </Marker>
         ))
       )}
+      {showMigration && <MigrationLayer places={geocoded} />}
     </MapContainer>
   );
 }

@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Users, Heart, BookOpen, MapPin, Network, Calendar, Globe, Briefcase } from "lucide-react";
+import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { getTree } from "@/api/trees";
 import { listPersons } from "@/api/persons";
@@ -46,14 +48,14 @@ function topN(items: string[], n: number): { value: string; count: number }[] {
 function DashboardTab({ treeId }: { treeId: string }) {
   const navigate = useNavigate();
 
-  const { data: personsData }       = useQuery({ queryKey: queryKeys.persons.stat(treeId),           queryFn: () => listPersons(treeId, 0, 1),         enabled: !!treeId });
-  const { data: relsData }          = useQuery({ queryKey: queryKeys.relationships.all(treeId),      queryFn: () => listRelationships(treeId, 0, 1),   enabled: !!treeId });
-  const { data: storiesData }       = useQuery({ queryKey: queryKeys.stories.stat(treeId),           queryFn: () => listStories(treeId, { limit: 1 }), enabled: !!treeId });
-  const { data: places }            = useQuery({ queryKey: queryKeys.places.forTree(treeId),         queryFn: () => listTreePlaces(treeId),            enabled: !!treeId });
-  const { data: fullPersonsData }   = useQuery({ queryKey: queryKeys.persons.full(treeId),           queryFn: () => listPersons(treeId, 0, 50000),     enabled: !!treeId });
-  const { data: fullStoriesData }   = useQuery({ queryKey: queryKeys.stories.all(treeId),            queryFn: () => listStories(treeId, { limit: 20 }), enabled: !!treeId });
-  const { data: fullRelsData }      = useQuery({ queryKey: queryKeys.relationships.full(treeId),     queryFn: () => listRelationships(treeId, 0, 50000), enabled: !!treeId });
-  const { data: placeDetails }      = useQuery({ queryKey: queryKeys.places.forTreeDetails(treeId),  queryFn: () => listTreePlaceDetails(treeId),      enabled: !!treeId });
+  const { data: personsData }     = useQuery({ queryKey: queryKeys.persons.stat(treeId),          queryFn: () => listPersons(treeId, 0, 1),          enabled: !!treeId });
+  const { data: relsData }        = useQuery({ queryKey: queryKeys.relationships.stat(treeId),    queryFn: () => listRelationships(treeId, 0, 1),    enabled: !!treeId });
+  const { data: storiesData }     = useQuery({ queryKey: queryKeys.stories.stat(treeId),          queryFn: () => listStories(treeId, { limit: 1 }),  enabled: !!treeId });
+  const { data: places }          = useQuery({ queryKey: queryKeys.places.forTree(treeId),        queryFn: () => listTreePlaces(treeId),             enabled: !!treeId });
+  const { data: fullPersonsData } = useQuery({ queryKey: queryKeys.persons.full(treeId),          queryFn: () => listPersons(treeId, 0, 50000),      enabled: !!treeId });
+  const { data: fullStoriesData } = useQuery({ queryKey: queryKeys.stories.all(treeId),           queryFn: () => listStories(treeId, { limit: 20 }), enabled: !!treeId });
+  const { data: fullRelsData }    = useQuery({ queryKey: queryKeys.relationships.full(treeId),    queryFn: () => listRelationships(treeId, 0, 50000),enabled: !!treeId });
+  const { data: placeDetails }    = useQuery({ queryKey: queryKeys.places.forTreeDetails(treeId), queryFn: () => listTreePlaceDetails(treeId),       enabled: !!treeId });
 
   const persons = fullPersonsData?.items ?? [];
 
@@ -61,8 +63,7 @@ function DashboardTab({ treeId }: { treeId: string }) {
     const genders: Record<string, number> = {};
     const allNationalities: string[] = [];
     const allOccupations: string[] = [];
-    let withBirthDate = 0, withLocation = 0;
-    let living = 0, deceased = 0;
+    let withBirthDate = 0, withLocation = 0, living = 0, deceased = 0;
     let minYear = Infinity, maxYear = -Infinity;
 
     for (const p of persons) {
@@ -83,46 +84,47 @@ function DashboardTab({ treeId }: { treeId: string }) {
 
     const relTypes: Record<string, number> = {};
     for (const r of fullRelsData?.items ?? []) {
+      if (r.relationship_type === "child") continue; // inverse of parent — skip to avoid double-count
       relTypes[r.relationship_type] = (relTypes[r.relationship_type] ?? 0) + 1;
     }
 
     return {
-      genders,
-      relTypes,
-      living, deceased,
-      withBirthDate, withLocation,
+      genders, relTypes, living, deceased, withBirthDate, withLocation,
       yearRange: minYear <= maxYear ? [minYear, maxYear] as const : null,
       topNationalities: topN(allNationalities, 3),
-      topOccupations: topN(allOccupations, 3),
+      topOccupations:   topN(allOccupations, 3),
     };
   }, [persons, fullRelsData]);
 
   const recentPersons = useMemo(() =>
     [...persons].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6),
-    [persons],
-  );
+    [persons]);
   const recentStories = useMemo(() =>
     [...(fullStoriesData?.items ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5),
-    [fullStoriesData],
-  );
+    [fullStoriesData]);
 
   const geocodedPlaces = (placeDetails ?? []).filter(p => p.lat !== null && p.lon !== null);
-  const completeness = persons.length > 0
+  const completeness   = persons.length > 0
     ? Math.round(((stats.withBirthDate + stats.withLocation) / (persons.length * 2)) * 100)
     : 0;
 
   return (
-    <div className="space-y-5 py-2">
-      {/* Stats row */}
+    <div className="space-y-6 py-2">
+
+      {/* ── Stat cards ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="pt-4 pb-3 text-center">
-            <p className="text-2xl font-bold tabular-nums">{personsData?.total ?? "—"}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">People</p>
+        {/* People */}
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate("?tab=people", { replace: true })}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-muted-foreground">People</span>
+              <Users className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="text-3xl font-bold tabular-nums">{personsData?.total ?? "—"}</p>
             {persons.length > 0 && (
-              <div className="flex items-center justify-center gap-1.5 mt-1.5">
+              <div className="flex items-center gap-2 mt-2">
                 {Object.entries(stats.genders).map(([g, n]) => (
-                  <span key={g} className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                  <span key={g} className="flex items-center gap-1 text-xs text-muted-foreground">
                     <span className={`w-2 h-2 rounded-full ${genderBadgeColor(g)}`} />
                     {n}
                   </span>
@@ -131,142 +133,173 @@ function DashboardTab({ treeId }: { treeId: string }) {
             )}
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 text-center">
-            <p className="text-2xl font-bold tabular-nums">{relsData?.total ?? "—"}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Relationships</p>
+
+        {/* Relationships */}
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate("?tab=relationships", { replace: true })}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-muted-foreground">Relationships</span>
+              <Heart className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="text-3xl font-bold tabular-nums">{relsData?.total ?? "—"}</p>
             {Object.keys(stats.relTypes).length > 0 && (
-              <p className="text-[10px] text-muted-foreground mt-1.5 leading-tight">
+              <p className="text-xs text-muted-foreground mt-2 leading-tight">
                 {Object.entries(stats.relTypes).map(([t, n]) => `${n} ${t}`).join(" · ")}
               </p>
             )}
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 text-center">
-            <p className="text-2xl font-bold tabular-nums">{storiesData?.total ?? "—"}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Stories</p>
+
+        {/* Stories */}
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate("?tab=stories", { replace: true })}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-muted-foreground">Stories</span>
+              <BookOpen className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="text-3xl font-bold tabular-nums">{storiesData?.total ?? "—"}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 text-center">
-            <p className="text-2xl font-bold tabular-nums">{places?.length ?? "—"}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Places</p>
+
+        {/* Places */}
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate("?tab=places", { replace: true })}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-muted-foreground">Places</span>
+              <MapPin className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="text-3xl font-bold tabular-nums">{places?.length ?? "—"}</p>
             {places && places.length > 0 && (
-              <p className="text-[10px] text-muted-foreground mt-1.5">
-                {geocodedPlaces.length} geocoded
+              <p className="text-xs text-muted-foreground mt-2">
+                {geocodedPlaces.length} of {places.length} geocoded
               </p>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Map + Insights row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* ── Map + Insights ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Map — 3/5 */}
         {geocodedPlaces.length > 0 ? (
-          <Card className="overflow-hidden">
-            <div className="h-[220px]">
+          <Card className="lg:col-span-3 overflow-hidden">
+            <div className="h-[300px]">
               <PlacesMap places={geocodedPlaces} />
             </div>
           </Card>
         ) : (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              No geocoded places yet. Add locations to people to see them on the map.
+          <Card className="lg:col-span-3">
+            <CardContent className="h-[300px] flex flex-col items-center justify-center gap-2 text-center">
+              <MapPin className="h-8 w-8 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">No geocoded places yet.</p>
+              <button onClick={() => navigate("?tab=places", { replace: true })} className="text-xs text-primary hover:underline">Go to Places →</button>
             </CardContent>
           </Card>
         )}
 
-        <Card>
-          <CardContent className="pt-4 pb-3 space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quick Insights</h3>
-            <div className="space-y-2 text-sm">
+        {/* Insights — 2/5 */}
+        <Card className="lg:col-span-2">
+          <CardContent className="p-4 h-full flex flex-col gap-3">
+            <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Insights</p>
+            <div className="space-y-3 text-sm flex-1">
               {stats.yearRange && (
-                <div className="flex justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-muted-foreground">Birth years</span>
-                  <span className="font-medium">{stats.yearRange[0]} – {stats.yearRange[1]}</span>
+                  <span className="font-medium ml-auto">{stats.yearRange[0]} – {stats.yearRange[1]}</span>
                 </div>
               )}
               {(stats.living > 0 || stats.deceased > 0) && (
-                <div className="flex justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-muted-foreground">Status</span>
-                  <span className="font-medium">{stats.living} living · {stats.deceased} deceased</span>
+                  <span className="font-medium ml-auto text-right">{stats.living > 0 ? `${stats.living} living` : ""}{stats.living > 0 && stats.deceased > 0 ? " · " : ""}{stats.deceased > 0 ? `${stats.deceased} deceased` : ""}</span>
                 </div>
               )}
               {stats.topNationalities.length > 0 && (
-                <div className="flex justify-between">
+                <div className="flex items-start gap-2">
+                  <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                   <span className="text-muted-foreground shrink-0">Nationalities</span>
-                  <span className="font-medium text-right truncate ml-2">{stats.topNationalities.map(n => n.value).join(", ")}</span>
+                  <span className="font-medium ml-auto text-right truncate">{stats.topNationalities.map(n => n.value).join(", ")}</span>
                 </div>
               )}
               {stats.topOccupations.length > 0 && (
-                <div className="flex justify-between">
+                <div className="flex items-start gap-2">
+                  <Briefcase className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                   <span className="text-muted-foreground shrink-0">Occupations</span>
-                  <span className="font-medium text-right truncate ml-2">{stats.topOccupations.map(o => o.value).join(", ")}</span>
-                </div>
-              )}
-              {persons.length > 0 && (
-                <div className="space-y-1 pt-1 border-t">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Data completeness</span>
-                    <span className="font-medium">{completeness}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completeness}%` }} />
-                  </div>
+                  <span className="font-medium ml-auto text-right truncate">{stats.topOccupations.map(o => o.value).join(", ")}</span>
                 </div>
               )}
             </div>
+            {persons.length > 0 && (
+              <div className="space-y-1.5 pt-3 border-t">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Data completeness</span>
+                  <span className="font-semibold">{completeness}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completeness}%` }} />
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Open Graph — compact */}
+      {/* ── Open Family Graph ───────────────────────────────────────────── */}
       <button
-        onClick={() => navigate(`?tab=graph`, { replace: true })}
-        className="w-full rounded-lg border border-slate-200 hover:border-primary hover:bg-primary/5 transition-colors px-4 py-3 text-left flex items-center justify-between group"
+        onClick={() => navigate("?tab=graph", { replace: true })}
+        className="w-full rounded-xl border border-border bg-card hover:bg-accent hover:border-primary/40 transition-all px-5 py-4 flex items-center justify-between group"
       >
-        <div>
-          <p className="text-sm font-semibold group-hover:text-primary transition-colors">Open Family Graph</p>
-          <p className="text-xs text-muted-foreground">Interactive tree visualization</p>
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+            <Network className="h-5 w-5 text-primary" />
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-semibold group-hover:text-primary transition-colors">Open Family Graph</p>
+            <p className="text-xs text-muted-foreground">Interactive tree visualization</p>
+          </div>
         </div>
-        <span className="text-lg text-muted-foreground group-hover:text-primary transition-colors">→</span>
+        <span className="text-muted-foreground group-hover:text-primary transition-colors text-lg">→</span>
       </button>
 
-      {/* Recent activity */}
+      {/* ── Recent activity ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Recent people */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recently added people</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recently added</h2>
             {persons.length > 6 && (
               <button onClick={() => navigate("?tab=people", { replace: true })} className="text-xs text-primary hover:underline">View all →</button>
             )}
           </div>
-          {recentPersons.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No people yet.</p>
-          ) : (
-            <div className="space-y-0.5">
-              {recentPersons.map((p) => {
-                const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
-                const ini = ((p.given_name?.[0] ?? "") + (p.family_name?.[0] ?? "")).toUpperCase() || "?";
-                const date = formatFlexDate(p.birth_date, p.birth_date_qualifier, p.birth_date_2, p.birth_date_original);
-                const avatarBg = genderBadgeColor(p.gender ?? "unknown");
-                return (
-                  <Link key={p.id} to={`/trees/${treeId}/persons/${p.id}`}
-                    className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-muted transition-colors group"
-                  >
-                    <div className={`${avatarBg} w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{ini}</div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{name}</p>
-                      {date && <p className="text-xs text-muted-foreground">b. {date}</p>}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
+          {recentPersons.length === 0
+            ? <p className="text-sm text-muted-foreground italic">No people yet.</p>
+            : (
+              <div className="space-y-0.5">
+                {recentPersons.map((p) => {
+                  const name    = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
+                  const ini     = ((p.given_name?.[0] ?? "") + (p.family_name?.[0] ?? "")).toUpperCase() || "?";
+                  const date    = formatFlexDate(p.birth_date, p.birth_date_qualifier, p.birth_date_2, p.birth_date_original);
+                  const avatarBg = genderBadgeColor(p.gender ?? "unknown");
+                  return (
+                    <Link key={p.id} to={`/trees/${treeId}/persons/${p.id}`}
+                      className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted transition-colors group"
+                    >
+                      <div className={`${avatarBg} w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>{ini}</div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{name}</p>
+                        {date && <p className="text-xs text-muted-foreground">b. {date}</p>}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )
+          }
         </div>
 
+        {/* Recent stories */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent stories</h2>
@@ -274,23 +307,30 @@ function DashboardTab({ treeId }: { treeId: string }) {
               <button onClick={() => navigate("?tab=stories", { replace: true })} className="text-xs text-primary hover:underline">View all →</button>
             )}
           </div>
-          {recentStories.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No stories yet.</p>
-          ) : (
-            <div className="space-y-0.5">
-              {recentStories.map((s) => (
-                <Link key={s.id} to={`/trees/${treeId}/stories/${s.id}`}
-                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-muted transition-colors group"
-                >
-                  <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs shrink-0">S</div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{s.title}</p>
-                    {s.event_date && <p className="text-xs text-muted-foreground">{s.event_date.slice(0, 4)}</p>}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
+          {recentStories.length === 0
+            ? <p className="text-sm text-muted-foreground italic">No stories yet.</p>
+            : (
+              <div className="space-y-0.5">
+                {recentStories.map((s) => (
+                  <Link key={s.id} to={`/trees/${treeId}/stories/${s.id}`}
+                    className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted transition-colors group"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <BookOpen className="h-3.5 w-3.5 text-primary" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{s.title}</p>
+                      {(s.event_date || s.event_location) && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[s.event_date?.slice(0, 4), s.event_location].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )
+          }
         </div>
       </div>
     </div>
@@ -310,7 +350,7 @@ export function TreeDetailPage() {
     enabled:  !!treeId,
   });
   const { data: pCount } = useQuery({ queryKey: queryKeys.persons.stat(treeId!),      queryFn: () => listPersons(treeId!, 0, 1),        enabled: !!treeId });
-  const { data: rCount } = useQuery({ queryKey: queryKeys.relationships.all(treeId!), queryFn: () => listRelationships(treeId!, 0, 1),  enabled: !!treeId });
+  const { data: rCount } = useQuery({ queryKey: queryKeys.relationships.stat(treeId!), queryFn: () => listRelationships(treeId!, 0, 1),  enabled: !!treeId });
   const { data: sCount } = useQuery({ queryKey: queryKeys.stories.stat(treeId!),      queryFn: () => listStories(treeId!, { limit: 1 }), enabled: !!treeId });
   const { data: plData } = useQuery({ queryKey: queryKeys.places.forTree(treeId!),    queryFn: () => listTreePlaces(treeId!),            enabled: !!treeId });
 
@@ -320,15 +360,24 @@ export function TreeDetailPage() {
 
   const badge = (n: number | undefined) => n ? ` (${n})` : "";
 
+  const activeTab = searchParams.get("tab") || "home";
+  const TAB_LABELS: Record<string, string> = {
+    graph: "Graph", people: "People", relationships: "Relationships",
+    stories: "Stories", places: "Places", media: "Media",
+  };
+  const tabLabel = TAB_LABELS[activeTab];
+
   return (
     <div className="space-y-3">
-      {/* Compact header */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link to="/dashboard" className="text-sm text-muted-foreground hover:text-foreground shrink-0">← Dashboard</Link>
-          <span className="text-muted-foreground">/</span>
-          <h1 className="text-lg font-semibold truncate">{tree.name}</h1>
-        </div>
+        <Breadcrumb items={[
+          { label: "Dashboard", href: "/dashboard" },
+          ...(tabLabel
+            ? [{ label: tree.name, href: `/trees/${treeId}` }, { label: tabLabel }]
+            : [{ label: tree.name }]
+          ),
+        ]} />
         <Button variant="outline" size="sm" className="shrink-0"
           onClick={() => navigate(`/trees/${treeId}/manage`)}
         >

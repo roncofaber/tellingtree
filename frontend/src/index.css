@@ -129,18 +129,9 @@
     }
 }
 
-.family-chart-light .f3 {
-  --background-color: #f8fafc;
-  --text-color: #334155;
-  --male-color: rgb(147, 197, 253);
-  --female-color: rgb(253, 164, 175);
-  --genderless-color: rgb(203, 213, 225);
-}
-
-.family-chart-light .f3 .link {
-  stroke: #94a3b8 !important;
-}
-
-.family-chart-light .f3 .card-main .card-inner {
-  outline-color: #3b82f6;
+/* Smooth position transitions for React Flow nodes.
+   CSS transitions only fire on DOM element property changes, not on initial placement,
+   so new nodes appear instantly while existing nodes slide to their new positions. */
+.rf-animated .react-flow__node {
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }

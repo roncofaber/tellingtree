@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getStory, updateStory, deleteStory } from "@/api/stories";
+import { getTree } from "@/api/trees";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
+import { Breadcrumb } from "@/components/common/Breadcrumb";
 
 export function StoryDetailPage() {
   const { treeId, storyId } = useParams<{ treeId: string; storyId: string }>();
@@ -22,6 +24,12 @@ export function StoryDetailPage() {
     event_date: "",
     event_end_date: "",
     event_location: "",
+  });
+
+  const { data: tree } = useQuery({
+    queryKey: queryKeys.trees.detail(treeId!),
+    queryFn:  () => getTree(treeId!),
+    enabled:  !!treeId,
   });
 
   const { data: story, isLoading, error } = useQuery({
@@ -70,11 +78,12 @@ export function StoryDetailPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <Link to={`/trees/${treeId}`} className="hover:text-foreground">&larr; Tree</Link>
-        <span>/</span>
-        <Link to={`/trees/${treeId}?tab=stories`} className="hover:text-foreground">Stories</Link>
-      </div>
+      <Breadcrumb items={[
+        { label: "Dashboard",           href: "/dashboard" },
+        { label: tree?.name ?? "Tree",  href: `/trees/${treeId}` },
+        { label: "Stories",             href: `/trees/${treeId}?tab=stories` },
+        { label: story.title },
+      ]} />
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{story.title}</h1>

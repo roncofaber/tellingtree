@@ -24,6 +24,8 @@ export const queryKeys = {
     all:  (treeId: string) => ["trees", treeId, "relationships"] as const,
     // Full unbounded fetch (GraphTab)
     full: (treeId: string) => ["trees", treeId, "relationships", "full"] as const,
+    // Count-only fetch (header badge) — limit=1, just needs `.total`
+    stat: (treeId: string) => ["trees", treeId, "relationships", "stat"] as const,
     detail: (treeId: string, id: string) =>
       ["trees", treeId, "relationships", id] as const,
     forPerson: (treeId: string, personId: string) =>

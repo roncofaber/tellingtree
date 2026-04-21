@@ -1,12 +1,16 @@
 import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { Network } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPerson, updatePerson, deletePerson, listPersons } from "@/api/persons";
+import { getTree } from "@/api/trees";
+import { getPlace } from "@/api/places";
 import { getMediaDownloadUrl } from "@/api/media";
 import { listPersonRelationships, updateRelationship, deleteRelationship } from "@/api/relationships";
 import { listStories } from "@/api/stories";
 import { formatFlexDate } from "@/lib/dates";
 import { queryKeys } from "@/lib/queryKeys";
+import type { Place } from "@/types/place";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { LocationInput } from "@/components/common/LocationInput";
+import { Breadcrumb } from "@/components/common/Breadcrumb";
 import type { Relationship } from "@/types/relationship";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -81,6 +86,12 @@ function InfoPair({ label, value }: { label: string; value: string }) {
   );
 }
 
+function LocationDisplay({ geocoded, raw }: { geocoded?: Place | null; raw?: string | null }) {
+  const label = geocoded?.display_name ?? raw;
+  if (!label) return null;
+  return <p className="text-sm font-medium">{label}</p>;
+}
+
 function QualifierSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <Select value={value} onValueChange={(v) => { if (v !== null) onChange(v); }}>
@@ -94,6 +105,53 @@ function QualifierSelect({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
+// ─── Relationship grouping ────────────────────────────────────────────────────
+
+type RelGroup = "parents" | "spouses" | "partners" | "children" | "other";
+
+function groupRelationships(rels: Relationship[], personId: string): Record<RelGroup, Relationship[]> {
+  const g: Record<RelGroup, Relationship[]> = { parents: [], spouses: [], partners: [], children: [], other: [] };
+  const seen = new Set<string>();
+
+  for (const rel of rels) {
+    const otherId = rel.person_a_id === personId ? rel.person_b_id : rel.person_a_id;
+
+    if (rel.relationship_type === "parent" || rel.relationship_type === "child") {
+      const key = `parent:${[personId, otherId].sort().join(":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const personIsParent =
+        (rel.relationship_type === "parent" && rel.person_a_id === personId) ||
+        (rel.relationship_type === "child"  && rel.person_b_id === personId);
+      (personIsParent ? g.children : g.parents).push(rel);
+    } else if (rel.relationship_type === "spouse") {
+      const key = `spouse:${[personId, otherId].sort().join(":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      g.spouses.push(rel);
+    } else if (rel.relationship_type === "partner") {
+      const key = `partner:${[personId, otherId].sort().join(":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      g.partners.push(rel);
+    } else {
+      const key = `${rel.relationship_type}:${[personId, otherId].sort().join(":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      g.other.push(rel);
+    }
+  }
+  return g;
+}
+
+const REL_GROUP_ORDER: Array<{ key: RelGroup; label: string }> = [
+  { key: "parents",  label: "Parents"  },
+  { key: "spouses",  label: "Spouses"  },
+  { key: "partners", label: "Partners" },
+  { key: "children", label: "Children" },
+  { key: "other",    label: "Other"    },
+];
+
 // ─── PersonDetailPage ─────────────────────────────────────────────────────────
 
 export function PersonDetailPage() {
@@ -104,6 +162,12 @@ export function PersonDetailPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const { data: tree } = useQuery({
+    queryKey: queryKeys.trees.detail(treeId!),
+    queryFn:  () => getTree(treeId!),
+    enabled:  !!treeId,
+  });
 
   const { data: person, isLoading, error } = useQuery({
     queryKey: queryKeys.persons.detail(treeId!, personId!),
@@ -129,6 +193,18 @@ export function PersonDetailPage() {
     enabled:  !!treeId && !!personId,
   });
 
+  const { data: birthPlace } = useQuery({
+    queryKey: queryKeys.places.detail(person?.birth_place_id ?? "_"),
+    queryFn:  () => getPlace(person!.birth_place_id!),
+    enabled:  !!person?.birth_place_id,
+  });
+
+  const { data: deathPlace } = useQuery({
+    queryKey: queryKeys.places.detail(person?.death_place_id ?? "_"),
+    queryFn:  () => getPlace(person!.death_place_id!),
+    enabled:  !!person?.death_place_id,
+  });
+
   const resolvePersonName = (id: string) => {
     const p = allPersons?.items.find((p) => p.id === id);
     return p ? [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed" : "Unknown";
@@ -138,13 +214,6 @@ export function PersonDetailPage() {
     return ((p?.given_name?.[0] ?? "") + (p?.family_name?.[0] ?? "")).toUpperCase() || "?";
   };
 
-  const relLabel = (rel: Relationship) => {
-    if (rel.relationship_type === "spouse")  return "Spouse";
-    if (rel.relationship_type === "partner") return "Partner";
-    if (rel.relationship_type === "parent")
-      return rel.person_a_id === personId ? "Parent of" : "Child of";
-    return rel.relationship_type;
-  };
   const relDateRange = (rel: Relationship) => {
     if (!rel.start_date && !rel.end_date) return null;
     return `${rel.start_date?.slice(0, 4) ?? "?"} – ${rel.end_date ? rel.end_date.slice(0, 4) : "present"}`;
@@ -319,14 +388,12 @@ export function PersonDetailPage() {
   // ── View mode ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5 max-w-2xl">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <Link to={`/trees/${treeId}`} className="hover:text-foreground">← Tree</Link>
-        <span>/</span>
-        <Link to={`/trees/${treeId}?tab=graph`} className="hover:text-foreground">Graph</Link>
-        <span>/</span>
-        <Link to={`/trees/${treeId}?tab=people`} className="hover:text-foreground">People</Link>
-      </div>
+      <Breadcrumb items={[
+        { label: "Dashboard",           href: "/dashboard" },
+        { label: tree?.name ?? "Tree",  href: `/trees/${treeId}` },
+        { label: "People",              href: `/trees/${treeId}?tab=people` },
+        { label: name },
+      ]} />
 
       {/* Header */}
       <div className="flex items-start gap-4">
@@ -339,66 +406,108 @@ export function PersonDetailPage() {
           {person.nickname && <p className="text-sm text-muted-foreground italic">"{person.nickname}"</p>}
           <p className="text-sm text-muted-foreground mt-1">
             {birthFmt && deathFmt ? `${birthFmt} – ${deathFmt}` : birthFmt ? `b. ${birthFmt}` : deathFmt ? `d. ${deathFmt}` : null}
-            {birthFmt && person.birth_location && ` · ${person.birth_location}`}
+            {(birthPlace?.display_name || person.birth_location) && (
+              <span> · {birthPlace?.display_name ?? person.birth_location}</span>
+            )}
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={() => navigate(`/trees/${treeId}?tab=graph&root=${personId}`)}>
+            <Network className="h-3.5 w-3.5 mr-1.5" />
+            Graph
+          </Button>
           <Button variant="outline" size="sm" onClick={startEdit}>Edit</Button>
           <Button variant="destructive" size="sm" onClick={() => deleteMut.mutate()} disabled={deleteMut.isPending}>Delete</Button>
         </div>
       </div>
 
-      {/* About */}
-      {(person.gender || person.occupation || person.nationalities?.length || person.education || person.is_living !== null) && (
-        <SectionCard title="About">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            {person.gender      && <InfoPair label="Sex"         value={person.gender.charAt(0).toUpperCase() + person.gender.slice(1)} />}
-            {person.occupation  && <InfoPair label="Occupation"  value={person.occupation} />}
-            {person.nationalities && person.nationalities.length > 0 && <InfoPair label="Nationality" value={person.nationalities.join(", ")} />}
-            {person.education   && <InfoPair label="Education"   value={person.education} />}
-            {(person.birth_location || person.death_location) && (
-              <div className="col-span-2 grid grid-cols-2 gap-x-6">
-                {person.birth_location && <InfoPair label="Born in" value={person.birth_location} />}
-                {person.death_location && <InfoPair label="Died in" value={person.death_location} />}
+      {/* Life Events */}
+      {(person.birth_date || person.birth_location || person.birth_place_id || person.death_date || person.death_location || person.death_place_id) && (
+        <SectionCard title="Life Events">
+          <div className="space-y-4">
+            {(person.birth_date || person.birth_location || person.birth_place_id) && (
+              <div className="flex gap-4 items-start">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground w-14 pt-0.5 shrink-0">Birth</span>
+                <div className="space-y-0.5 min-w-0">
+                  {birthFmt && <p className="text-sm font-medium">{birthFmt}</p>}
+                  <LocationDisplay geocoded={birthPlace} raw={person.birth_location} />
+                </div>
               </div>
             )}
+            {(person.death_date || person.death_location || person.death_place_id) && (
+              <div className="flex gap-4 items-start">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground w-14 pt-0.5 shrink-0">Death</span>
+                <div className="space-y-0.5 min-w-0">
+                  {deathFmt && <p className="text-sm font-medium">{deathFmt}</p>}
+                  <LocationDisplay geocoded={deathPlace} raw={person.death_location} />
+                </div>
+              </div>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* About */}
+      <SectionCard title="About">
+        {(person.gender || person.occupation || person.nationalities?.length || person.education || person.is_living !== null) ? (
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            {person.gender     && <InfoPair label="Sex"         value={person.gender.charAt(0).toUpperCase() + person.gender.slice(1)} />}
+            {person.occupation && <InfoPair label="Occupation"  value={person.occupation} />}
+            {person.nationalities && person.nationalities.length > 0 && <InfoPair label="Nationality" value={person.nationalities.join(", ")} />}
+            {person.education  && <InfoPair label="Education"   value={person.education} />}
             {person.is_living === true  && !person.death_date && <InfoPair label="Status" value="Living" />}
             {person.is_living === false && !person.death_date && <InfoPair label="Status" value="Deceased" />}
           </div>
-        </SectionCard>
-      )}
+        ) : (
+          <p className="text-sm text-muted-foreground italic">No details recorded yet.</p>
+        )}
+      </SectionCard>
 
       {/* Bio */}
-      {person.bio && (
-        <SectionCard title="Bio">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">{person.bio}</p>
-        </SectionCard>
-      )}
+      <SectionCard title="Biography">
+        {person.bio
+          ? <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">{person.bio}</p>
+          : <p className="text-sm text-muted-foreground italic">No biography recorded yet.</p>
+        }
+      </SectionCard>
 
       {/* Relationships */}
-      {relationships && relationships.length > 0 && (
-        <SectionCard title="Relationships">
-          <div className="space-y-2">
-            {relationships.map((rel) => {
-              const otherId = rel.person_a_id === personId ? rel.person_b_id : rel.person_a_id;
-              return (
-                <div key={rel.id} className="flex items-center gap-2">
-                  <Badge variant="secondary" className="w-20 justify-center text-xs shrink-0">{relLabel(rel)}</Badge>
-                  <Link to={`/trees/${treeId}/persons/${otherId}`} className="flex items-center gap-2 group min-w-0 flex-1">
-                    <Avatar initials={resolveInitials(otherId)} size={26} />
-                    <span className="text-sm font-medium group-hover:text-primary group-hover:underline truncate">{resolvePersonName(otherId)}</span>
-                  </Link>
-                  {relDateRange(rel) && <span className="text-xs text-muted-foreground shrink-0">{relDateRange(rel)}</span>}
-                  <div className="flex gap-1 shrink-0 ml-auto">
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => startRelEdit(rel)}>Edit</Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => deleteRelMut.mutate(rel.id)}>Del</Button>
+      {relationships && relationships.length > 0 && (() => {
+        const groups = groupRelationships(relationships, personId!);
+        const sections = REL_GROUP_ORDER.filter(({ key }) => groups[key].length > 0);
+        return (
+          <SectionCard title="Relationships">
+            <div className="space-y-5">
+              {sections.map(({ key, label }) => (
+                <div key={key}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{label}</p>
+                  <div className="space-y-1.5">
+                    {groups[key].map((rel) => {
+                      const otherId = rel.person_a_id === personId ? rel.person_b_id : rel.person_a_id;
+                      return (
+                        <div key={rel.id} className="flex items-center gap-2">
+                          {key === "other" && (
+                            <Badge variant="secondary" className="text-xs shrink-0">{rel.relationship_type}</Badge>
+                          )}
+                          <Link to={`/trees/${treeId}/persons/${otherId}`} className="flex items-center gap-2 group min-w-0 flex-1">
+                            <Avatar initials={resolveInitials(otherId)} size={28} />
+                            <span className="text-sm font-medium group-hover:text-primary group-hover:underline truncate">{resolvePersonName(otherId)}</span>
+                          </Link>
+                          {relDateRange(rel) && <span className="text-xs text-muted-foreground shrink-0">{relDateRange(rel)}</span>}
+                          <div className="flex gap-1 shrink-0 ml-auto">
+                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => startRelEdit(rel)}>Edit</Button>
+                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => deleteRelMut.mutate(rel.id)}>Delete</Button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-      )}
+              ))}
+            </div>
+          </SectionCard>
+        );
+      })()}
 
       {/* Stories */}
       {stories && stories.items.length > 0 && (

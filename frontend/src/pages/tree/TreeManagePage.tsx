@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getTree, updateTree, deleteTree } from "@/api/trees";
+import { resetTreeGeocoding } from "@/api/places";
 import { listPersons } from "@/api/persons";
 import { importGedcomStreaming, type ImportResult, type ImportProgress } from "@/api/imports";
 import { queryKeys } from "@/lib/queryKeys";
@@ -36,6 +38,11 @@ export function TreeManagePage() {
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // Geocoding reset
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting,    setResetting]    = useState(false);
+  const [resetResult,  setResetResult]  = useState<number | null>(null);
 
   // Graph settings (localStorage)
   const [graphSettings, setGraphSettings] = useState(() => loadGraphSettings(treeId ?? ""));
@@ -90,6 +97,20 @@ export function TreeManagePage() {
     } finally { setImporting(false); }
   };
 
+  const handleResetGeocoding = async () => {
+    setResetting(true);
+    try {
+      const { cleared } = await resetTreeGeocoding(treeId!);
+      setResetResult(cleared);
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId!) });
+    } finally {
+      setResetting(false);
+      setConfirmReset(false);
+    }
+  };
+
   const resetImport = () => {
     setImportResult(null); setImportError(null); setImportProgress(null); setSelectedFile(null);
     if (fileRef.current) fileRef.current.value = "";
@@ -100,11 +121,13 @@ export function TreeManagePage() {
   return (
     <div className="space-y-6 max-w-2xl">
       {/* Header */}
-      <div>
-        <Link to={`/trees/${treeId}`} className="text-sm text-muted-foreground hover:text-foreground">
-          ← Back to tree
-        </Link>
-        <h1 className="text-2xl font-bold mt-1">{tree?.name} — Settings</h1>
+      <div className="space-y-1">
+        <Breadcrumb items={[
+          { label: "Dashboard",          href: "/dashboard" },
+          { label: tree?.name ?? "Tree", href: `/trees/${treeId}` },
+          { label: "Settings" },
+        ]} />
+        <h1 className="text-2xl font-bold">{tree?.name} — Settings</h1>
       </div>
 
       {/* Tree details */}
@@ -165,6 +188,33 @@ export function TreeManagePage() {
           <Button variant="outline" onClick={() => { resetImport(); setImportOpen(true); }}>
             Import GEDCOM file…
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Geocoding */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Geocoding</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Clear all place links from persons in this tree. Raw location strings are preserved, so you can re-run batch geocoding afterwards from the Places tab.
+          </p>
+          {resetResult !== null && (
+            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+              Cleared {resetResult} place link{resetResult !== 1 ? "s" : ""}. Head to the Places tab to re-geocode.
+            </p>
+          )}
+          {confirmReset ? (
+            <div className="flex gap-2">
+              <Button variant="destructive" size="sm" disabled={resetting} onClick={handleResetGeocoding}>
+                {resetting ? "Resetting…" : "Confirm reset"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setConfirmReset(false)}>Cancel</Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => { setResetResult(null); setConfirmReset(true); }}>
+              Reset geocoding…
+            </Button>
+          )}
         </CardContent>
       </Card>
 

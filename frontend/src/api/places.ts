@@ -50,6 +50,10 @@ export interface BatchGeocodeEvent {
   failed?: number;
 }
 
+export function resetTreeGeocoding(treeId: string): Promise<{ cleared: number }> {
+  return apiClient.post<{ cleared: number }>(`/trees/${treeId}/places/reset-geocoding`, {});
+}
+
 export async function batchGeocode(
   treeId: string,
   onProgress: (event: BatchGeocodeEvent) => void,

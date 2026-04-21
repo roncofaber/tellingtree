@@ -14,7 +14,7 @@ from app.models.person import Person
 from app.models.place import Place
 from app.models.user import User
 from app.schemas.place import PlaceCreate, PlaceDetailResponse, PlacePersonRef, PlaceResponse, PlaceUpdate
-from app.services.geocoding import geocode
+from app.services.geocoding import geocode, preprocess_query
 from app.services.permission import check_tree_access
 
 router = APIRouter(prefix="/places", tags=["places"])
@@ -30,18 +30,27 @@ def search_places(
     _: User = Depends(get_current_user),
 ):
     """Search existing places, geocode on cache miss."""
-    # 1. Local DB search
+    clean_q = preprocess_query(q)
+
+    # 1. Local DB search (try both original and cleaned query)
     local = (
         db.query(Place)
-        .filter(Place.display_name.ilike(f"%{q}%"))
+        .filter(Place.display_name.ilike(f"%{clean_q}%"))
         .limit(6)
         .all()
     )
+    if not local and clean_q != q:
+        local = (
+            db.query(Place)
+            .filter(Place.display_name.ilike(f"%{q}%"))
+            .limit(6)
+            .all()
+        )
     if len(local) >= 3:
         return local
 
     # 2. Geocode via Nominatim for fresh results
-    results = geocode(q, limit=6)
+    results = geocode(clean_q, limit=6)
     places: list[Place] = list(local)
     seen_ids = {p.id for p in local}
 
@@ -50,8 +59,8 @@ def search_places(
         if r.lat is not None and r.lon is not None:
             existing = db.query(Place).filter(
                 Place.lat.isnot(None), Place.lon.isnot(None),
-                func.abs(Place.lat - r.lat) < 0.005,
-                func.abs(Place.lon - r.lon) < 0.005,
+                func.abs(Place.lat - r.lat) < 0.001,
+                func.abs(Place.lon - r.lon) < 0.001,
             ).first()
         if existing is None:
             existing = db.query(Place).filter(
@@ -73,6 +82,9 @@ def search_places(
             lon=r.lon,
             geocoder="nominatim",
             geocoded_at=datetime.now(timezone.utc),
+            osm_id=r.osm_id,
+            osm_type=r.osm_type,
+            place_type=r.place_type,
         )
         db.add(place)
         db.flush()
@@ -207,21 +219,56 @@ def list_tree_places_details(
         )
         .all()
     )
-    place_persons: dict[uuid.UUID, list[PlacePersonRef]] = {p.id: [] for p in places}
+    # Per place, collect {person_id: {name, fields}} so a person who was both
+    # born and died at the same place appears once with field="birth, death".
+    place_person_map: dict[uuid.UUID, dict[uuid.UUID, dict]] = {p.id: {} for p in places}
     for person in persons:
         name = " ".join(filter(None, [person.given_name, person.family_name])) or "Unnamed"
-        if person.birth_place_id in place_persons:
-            place_persons[person.birth_place_id].append(
-                PlacePersonRef(id=person.id, name=name, field="birth")
+        for place_id, field in [
+            (person.birth_place_id, "birth"),
+            (person.death_place_id, "death"),
+        ]:
+            if place_id not in place_person_map:
+                continue
+            if person.id not in place_person_map[place_id]:
+                place_person_map[place_id][person.id] = {"name": name, "fields": []}
+            place_person_map[place_id][person.id]["fields"].append(field)
+
+    place_persons = {
+        place_id: [
+            PlacePersonRef(
+                id=person_id,
+                name=data["name"],
+                field=", ".join(sorted(data["fields"])),
             )
-        if person.death_place_id in place_persons:
-            place_persons[person.death_place_id].append(
-                PlacePersonRef(id=person.id, name=name, field="death")
-            )
+            for person_id, data in person_map.items()
+        ]
+        for place_id, person_map in place_person_map.items()
+    }
     return [
         PlaceDetailResponse(**PlaceResponse.model_validate(p).model_dump(), persons=place_persons.get(p.id, []))
         for p in places
     ]
+
+
+@tree_router.post("/reset-geocoding")
+def reset_tree_geocoding(
+    tree_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Unlink all place associations from persons in this tree. Raw location strings are preserved."""
+    check_tree_access(db, tree_id, current_user.id, "editor")
+    cleared = (
+        db.query(Person)
+        .filter(
+            Person.tree_id == tree_id,
+            or_(Person.birth_place_id.isnot(None), Person.death_place_id.isnot(None)),
+        )
+        .update({"birth_place_id": None, "death_place_id": None})
+    )
+    db.commit()
+    return {"cleared": cleared}
 
 
 @tree_router.post("/geocode-all")
@@ -259,7 +306,7 @@ async def batch_geocode(
 
             for i, item in enumerate(items):
                 try:
-                    results = geocode(item["location"], limit=1)
+                    results = geocode(preprocess_query(item["location"]), limit=1)
                     if not results:
                         failed += 1
                         yield json.dumps({"phase": "geocoding", "current": i + 1, "total": total, "location": item["location"], "status": "no_match"}) + "\n"
@@ -270,8 +317,8 @@ async def batch_geocode(
                     if r.lat is not None and r.lon is not None:
                         existing = own_db.query(Place).filter(
                             Place.lat.isnot(None), Place.lon.isnot(None),
-                            func.abs(Place.lat - r.lat) < 0.005,
-                            func.abs(Place.lon - r.lon) < 0.005,
+                            func.abs(Place.lat - r.lat) < 0.001,
+                            func.abs(Place.lon - r.lon) < 0.001,
                         ).first()
                     if existing is None:
                         existing = own_db.query(Place).filter(Place.display_name == r.display_name).first()
@@ -284,6 +331,7 @@ async def batch_geocode(
                             country=r.country, country_code=r.country_code,
                             lat=r.lat, lon=r.lon,
                             geocoder="nominatim", geocoded_at=datetime.now(timezone.utc),
+                            osm_id=r.osm_id, osm_type=r.osm_type, place_type=r.place_type,
                         )
                         own_db.add(place)
                         own_db.flush()

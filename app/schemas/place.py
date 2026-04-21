@@ -35,6 +35,9 @@ class PlaceResponse(BaseModel):
     lon: float | None
     geocoder: str | None
     geocoded_at: datetime | None
+    osm_id: int | None
+    osm_type: str | None
+    place_type: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

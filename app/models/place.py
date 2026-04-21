@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from sqlalchemy import BigInteger, DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -19,6 +19,9 @@ class Place(Base):
     lon: Mapped[float | None] = mapped_column(Float)
     geocoder: Mapped[str | None] = mapped_column(String(50))
     geocoded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    osm_id: Mapped[int | None] = mapped_column(BigInteger)
+    osm_type: Mapped[str | None] = mapped_column(String(10))
+    place_type: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
