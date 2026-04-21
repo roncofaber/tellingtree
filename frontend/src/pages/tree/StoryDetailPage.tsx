@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { getStory, updateStory, deleteStory } from "@/api/stories";
 import { getTree } from "@/api/trees";
 import { queryKeys } from "@/lib/queryKeys";
@@ -50,6 +51,10 @@ export function StoryDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.stories.detail(treeId!, storyId!) });
       setEditing(false);
+      toast.success("Story saved");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to save story");
     },
   });
 
@@ -57,7 +62,11 @@ export function StoryDetailPage() {
     mutationFn: () => deleteStory(treeId!, storyId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.stories.all(treeId!) });
+      toast.success("Story deleted");
       navigate(`/trees/${treeId}`);
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to delete story");
     },
   });
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { listMembers, addMember, updateMember, removeMember } from "@/api/trees";
 import { queryKeys } from "@/lib/queryKeys";
 import { ROLE_LABELS } from "@/lib/constants";
@@ -40,6 +41,10 @@ export function MembersTab({ treeId }: Props) {
       setDialogOpen(false);
       setUsername("");
       setRole("viewer");
+      toast.success("Member added");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to add member");
     },
   });
 
@@ -48,6 +53,10 @@ export function MembersTab({ treeId }: Props) {
       updateMember(treeId, userId, newRole),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.trees.members(treeId) });
+      toast.success("Role updated");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to update role");
     },
   });
 
@@ -55,6 +64,10 @@ export function MembersTab({ treeId }: Props) {
     mutationFn: (userId: string) => removeMember(treeId, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.trees.members(treeId) });
+      toast.success("Member removed");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to remove member");
     },
   });
 
@@ -124,33 +137,39 @@ export function MembersTab({ treeId }: Props) {
         <TableBody>
           {members?.map((member) => (
             <TableRow key={member.id}>
-              <TableCell>{member.username || member.user_id.slice(0, 8)}</TableCell>
+              <TableCell className="font-medium">{member.username || member.user_id.slice(0, 8)}</TableCell>
               <TableCell>
-                <Badge variant="secondary">{member.role}</Badge>
+                <Badge variant={member.role === "owner" ? "default" : "secondary"}>{member.role === "owner" ? "Owner" : member.role}</Badge>
               </TableCell>
-              <TableCell className="space-x-2">
-                <Select
-                  value={member.role}
-                  onValueChange={(newRole) => {
-                    if (newRole !== null) updateMut.mutate({ userId: member.user_id, newRole });
-                  }}
-                >
-                  <SelectTrigger className="w-28 h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="viewer">Viewer</SelectItem>
-                    <SelectItem value="editor">Editor</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => removeMut.mutate(member.user_id)}
-                >
-                  Remove
-                </Button>
+              <TableCell>
+                {member.role === "owner" ? (
+                  <span className="text-xs text-muted-foreground">—</span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={member.role}
+                      onValueChange={(newRole) => {
+                        if (newRole !== null) updateMut.mutate({ userId: member.user_id, newRole });
+                      }}
+                    >
+                      <SelectTrigger className="w-28 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                        <SelectItem value="editor">Editor</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => removeMut.mutate(member.user_id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                )}
               </TableCell>
             </TableRow>
           ))}

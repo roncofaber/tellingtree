@@ -1,6 +1,7 @@
+import { useMemo, useState } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Settings, TreePine, Plus, LogOut } from "lucide-react";
+import { LayoutDashboard, Settings, TreePine, Plus, LogOut, Search } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { listTrees } from "@/api/trees";
 import { queryKeys } from "@/lib/queryKeys";
@@ -9,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 export function Sidebar() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [treeSearch, setTreeSearch] = useState("");
 
   const { data: trees } = useQuery({
     queryKey: queryKeys.trees.all(),
@@ -74,11 +76,25 @@ export function Sidebar() {
           </Link>
         </div>
 
+        {(trees?.items.length ?? 0) > 5 && (
+          <div className="relative mb-1.5">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Filter trees…"
+              value={treeSearch}
+              onChange={e => setTreeSearch(e.target.value)}
+              className="w-full h-7 pl-6 pr-2 text-xs rounded-md border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+        )}
         <div className="space-y-0.5">
           {trees?.items.length === 0 && (
             <p className="text-xs text-muted-foreground px-1 py-1 italic">No trees yet.</p>
           )}
-          {trees?.items.map((tree) => (
+          {(trees?.items ?? [])
+            .filter(t => !treeSearch || t.name.toLowerCase().includes(treeSearch.toLowerCase()))
+            .map((tree) => (
             <Link key={tree.id} to={`/trees/${tree.id}`} className={treeItem(tree.id)}>
               <TreePine className="h-3.5 w-3.5 shrink-0 opacity-60" />
               <span className="truncate">{tree.name}</span>

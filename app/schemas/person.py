@@ -1,7 +1,16 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+def _trim_names(values: dict) -> dict:
+    for key in ("given_name", "family_name", "maiden_name", "nickname"):
+        v = values.get(key)
+        if isinstance(v, str):
+            v = v.strip()
+            values[key] = v if v else None
+    return values
 
 
 class PersonCreate(BaseModel):
@@ -9,6 +18,7 @@ class PersonCreate(BaseModel):
     family_name: str | None = Field(None, max_length=500)
     maiden_name: str | None = Field(None, max_length=500)
     nickname: str | None = Field(None, max_length=255)
+
     birth_date: date | None = None
     birth_date_qualifier: str | None = Field(None, max_length=20)
     birth_date_2: date | None = None
@@ -28,6 +38,17 @@ class PersonCreate(BaseModel):
     education: str | None = None
     bio: str | None = None
     profile_picture_id: uuid.UUID | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def trim_names(cls, values: dict) -> dict:
+        return _trim_names(values)
+
+    @model_validator(mode="after")
+    def check_dates(self):
+        if self.birth_date and self.death_date and self.death_date < self.birth_date:
+            raise ValueError("Death date cannot be before birth date")
+        return self
 
 
 class PersonUpdate(BaseModel):
@@ -54,6 +75,17 @@ class PersonUpdate(BaseModel):
     education: str | None = None
     bio: str | None = None
     profile_picture_id: uuid.UUID | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def trim_names(cls, values: dict) -> dict:
+        return _trim_names(values)
+
+    @model_validator(mode="after")
+    def check_dates(self):
+        if self.birth_date and self.death_date and self.death_date < self.birth_date:
+            raise ValueError("Death date cannot be before birth date")
+        return self
 
 
 class PersonResponse(BaseModel):
@@ -82,6 +114,7 @@ class PersonResponse(BaseModel):
     education: str | None
     bio: str | None
     profile_picture_id: uuid.UUID | None
+    deleted_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

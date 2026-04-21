@@ -20,11 +20,16 @@ export interface ImportProgress {
   errors?: string[];
 }
 
+const MAX_GEDCOM_SIZE = 50 * 1024 * 1024; // 50MB
+
 export async function importGedcomStreaming(
   treeId: string,
   file: File,
   onProgress: (event: ImportProgress) => void,
 ): Promise<ImportResult> {
+  if (file.size > MAX_GEDCOM_SIZE) {
+    throw new Error(`File too large (${Math.round(file.size / (1024 * 1024))}MB). Maximum is ${MAX_GEDCOM_SIZE / (1024 * 1024)}MB.`);
+  }
   const form = new FormData();
   form.append("file", file);
 

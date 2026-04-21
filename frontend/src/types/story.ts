@@ -7,6 +7,7 @@ export interface Story {
   event_end_date: string | null;
   event_location: string | null;
   author_id: string;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
   person_ids: string[];

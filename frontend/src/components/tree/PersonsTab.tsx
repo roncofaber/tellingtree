@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listPersons, createPerson, deletePerson } from "@/api/persons";
+import { toast } from "sonner";
+import { listPersons, deletePerson } from "@/api/persons";
 import { queryKeys } from "@/lib/queryKeys";
 import { formatFlexDate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { AddPersonDialog } from "@/components/common/AddPersonDialog";
 import type { Person } from "@/types/person";
 
 type SortKey = "name-asc" | "name-desc" | "birth-asc" | "birth-desc" | "added-desc";
@@ -38,31 +38,11 @@ export function PersonsTab({ treeId }: { treeId: string }) {
   const [sexFilter, setSexFilter] = useState<string>("all");
   const [sort,    setSort]    = useState<SortKey>("name-asc");
 
-  // Add dialog state
-  const [dialogOpen,  setDialogOpen]  = useState(false);
-  const [givenName,   setGivenName]   = useState("");
-  const [familyName,  setFamilyName]  = useState("");
-  const [birthDate,   setBirthDate]   = useState("");
-  const [gender,      setGender]      = useState("");
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-  // Use the full persons cache (shared with GraphTab and PersonDetailPage)
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.persons.full(treeId),
     queryFn:  () => listPersons(treeId, 0, 50000),
-  });
-
-  const createMut = useMutation({
-    mutationFn: () => createPerson(treeId, {
-      given_name: givenName || undefined,
-      family_name: familyName || undefined,
-      birth_date: birthDate || undefined,
-      gender: gender || undefined,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.persons.all(treeId) });
-      setDialogOpen(false);
-      setGivenName(""); setFamilyName(""); setBirthDate(""); setGender("");
-    },
   });
 
   const deleteMut = useMutation({
@@ -70,6 +50,10 @@ export function PersonsTab({ treeId }: { treeId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.all(treeId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId) });
+      toast.success("Person deleted");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to delete person");
     },
   });
 
@@ -126,30 +110,8 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             {filtered.length} / {data?.total ?? 0}
           </span>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 h-8 shrink-0">
-            + Add Person
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Add a Person</DialogTitle></DialogHeader>
-            <form onSubmit={(e) => { e.preventDefault(); createMut.mutate(); }} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Given Name</Label><Input value={givenName} onChange={(e) => setGivenName(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Family Name</Label><Input value={familyName} onChange={(e) => setFamilyName(e.target.value)} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Birth Date</Label><Input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Sex</Label>
-                  <Select value={gender} onValueChange={(v) => { if (v !== null) setGender(v); }}>
-                    <SelectTrigger className="w-full"><span className={gender ? undefined : "text-muted-foreground"}>{gender ? gender.charAt(0).toUpperCase()+gender.slice(1) : "Select sex"}</span></SelectTrigger>
-                    <SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem><SelectItem value="unknown">Unknown</SelectItem></SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <Button type="submit" className="w-full" disabled={createMut.isPending}>{createMut.isPending ? "Adding…" : "Add Person"}</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Button className="h-8 shrink-0" onClick={() => setAddDialogOpen(true)}>+ Add Person</Button>
+        <AddPersonDialog open={addDialogOpen} treeId={treeId} onClose={() => setAddDialogOpen(false)} />
       </div>
 
       <Table>
@@ -170,11 +132,11 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             const died = formatFlexDate(p.death_date, p.death_date_qualifier, p.death_date_2, p.death_date_original);
             return (
               <TableRow key={p.id}>
-                <TableCell>
-                  <Link to={`/trees/${treeId}/persons/${p.id}`} className="text-primary hover:underline font-medium">
+                <TableCell className="max-w-[250px]">
+                  <Link to={`/trees/${treeId}/persons/${p.id}`} className="text-primary hover:underline font-medium truncate block" title={name}>
                     {name}
                   </Link>
-                  {p.nickname && <span className="text-xs text-muted-foreground ml-1">"{p.nickname}"</span>}
+                  {p.nickname && <span className="text-xs text-muted-foreground truncate block">"{p.nickname}"</span>}
                 </TableCell>
                 <TableCell className="text-sm">{born ?? "—"}</TableCell>
                 <TableCell className="text-sm">{died ?? "—"}</TableCell>

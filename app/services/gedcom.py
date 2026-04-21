@@ -336,10 +336,41 @@ def _trunc(value: str | None, maxlen: int = 500) -> str | None:
     return value
 
 
+def _title_case(name: str | None) -> str | None:
+    """Convert ALL CAPS surname to title case: RONCORONI → Roncoroni, O'BRIEN → O'Brien."""
+    if not name:
+        return name
+    if name == name.upper() and len(name) > 1:
+        return name.title()
+    return name
+
+
+def _extract_nickname(given: str | None) -> tuple[str | None, str | None]:
+    """Extract nickname from given name if present in quotes or parentheses.
+    'Giovanni "Nino"' → ('Giovanni', 'Nino')
+    'Maria (Mimi)' → ('Maria', 'Mimi')
+    """
+    if not given:
+        return given, None
+    import re
+    m = re.search(r'"([^"]+)"', given)
+    if m:
+        nick = m.group(1).strip()
+        clean = given[:m.start()].strip() + " " + given[m.end():].strip()
+        return clean.strip() or None, nick or None
+    m = re.search(r'\(([^)]+)\)', given)
+    if m:
+        nick = m.group(1).strip()
+        clean = given[:m.start()].strip() + " " + given[m.end():].strip()
+        return clean.strip() or None, nick or None
+    return given, None
+
+
 def _build_person(indi, tree_id: uuid.UUID) -> Person:
     given_name = None
     family_name = None
     maiden_name = None
+    nickname = None
 
     name_rec = indi.sub_tag("NAME")
     if name_rec:
@@ -347,6 +378,8 @@ def _build_person(indi, tree_id: uuid.UUID) -> Person:
         raw_surn = name_rec.sub_tag_value("SURN")
         if raw_surn:
             family_name = raw_surn.strip("/").strip() or None
+        # Nickname: GEDCOM NICK tag
+        nickname = name_rec.sub_tag_value("NICK") or indi.sub_tag_value("NICK") or None
         # Maiden name: Heredis uses _MARNM or _MARN
         maiden_name = (
             name_rec.sub_tag_value("_MARNM")
@@ -362,6 +395,14 @@ def _build_person(indi, tree_id: uuid.UUID) -> Person:
             given_name = parts[0].strip() or None
             if len(parts) >= 2:
                 family_name = parts[1].strip() or None
+
+    # Extract nickname from given name if embedded in quotes/parens
+    if not nickname and given_name:
+        given_name, nickname = _extract_nickname(given_name)
+
+    # De-capitalize ALL CAPS surnames
+    family_name = _title_case(family_name)
+    maiden_name = _title_case(maiden_name)
 
     # Sex
     sex_val = indi.sub_tag_value("SEX")
@@ -402,7 +443,7 @@ def _build_person(indi, tree_id: uuid.UUID) -> Person:
         given_name=_trunc(given_name),
         family_name=_trunc(family_name),
         maiden_name=_trunc(maiden_name),
-        nickname=None,
+        nickname=_trunc(nickname, 255),
         gender=_trunc(gender, 50),
         birth_date=b_date1,
         birth_date_qualifier=_trunc(b_qual, 20),

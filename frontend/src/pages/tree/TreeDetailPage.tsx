@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Users, Heart, BookOpen, MapPin, Network, Calendar, Globe, Briefcase } from "lucide-react";
+import { Users, Heart, BookOpen, MapPin, Network, Calendar, Globe, Briefcase, Settings } from "lucide-react";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { getTree } from "@/api/trees";
@@ -11,7 +11,6 @@ import { listTreePlaces, listTreePlaceDetails } from "@/api/places";
 import { formatFlexDate } from "@/lib/dates";
 import { queryKeys } from "@/lib/queryKeys";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
@@ -378,11 +377,13 @@ export function TreeDetailPage() {
             : [{ label: tree.name }]
           ),
         ]} />
-        <Button variant="outline" size="sm" className="shrink-0"
+        <button
           onClick={() => navigate(`/trees/${treeId}/manage`)}
+          title="Tree settings"
+          className="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
         >
-          Manage
-        </Button>
+          <Settings className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Tabs — scrollable so they never overflow */}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { listStories, createStory, deleteStory } from "@/api/stories";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
@@ -47,12 +48,22 @@ export function StoriesTab({ treeId }: { treeId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.stories.all(treeId) });
       setDialogOpen(false); setTitle(""); setContent(""); setEventDate(""); setEventLocation("");
+      toast.success("Story created");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to create story");
     },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteStory(treeId, id),
-    onSuccess:  () => queryClient.invalidateQueries({ queryKey: queryKeys.stories.all(treeId) }),
+    onSuccess:  () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.stories.all(treeId) });
+      toast.success("Story deleted");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to delete story");
+    },
   });
 
   const filtered = useMemo(() => {

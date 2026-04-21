@@ -97,7 +97,7 @@ def test_gedcom_import_person_fields(client, auth_headers, tree_id):
     assert "Luca" in by_name
 
     giovanni = by_name["Giovanni"]
-    assert giovanni["family_name"] == "ROSSI"
+    assert giovanni["family_name"] == "Rossi"
     assert giovanni["gender"] == "male"
     assert giovanni["birth_date"] == "1900-03-15"
     assert giovanni["birth_date_qualifier"] == "exact"

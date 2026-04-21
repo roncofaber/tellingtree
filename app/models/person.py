@@ -44,6 +44,7 @@ class Person(Base):
                    name="fk_persons_profile_picture_id_media"),
         index=True,
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

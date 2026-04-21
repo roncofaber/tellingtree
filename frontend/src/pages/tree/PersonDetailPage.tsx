@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Network } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPerson, updatePerson, deletePerson, listPersons } from "@/api/persons";
 import { getTree } from "@/api/trees";
 import { getPlace } from "@/api/places";
-import { getMediaDownloadUrl } from "@/api/media";
+import { getMediaDownloadUrl, uploadMedia } from "@/api/media";
 import { listPersonRelationships, updateRelationship, deleteRelationship } from "@/api/relationships";
 import { listStories } from "@/api/stories";
 import { formatFlexDate } from "@/lib/dates";
@@ -25,18 +26,7 @@ import { LocationInput } from "@/components/common/LocationInput";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import type { Relationship } from "@/types/relationship";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const DATE_QUALIFIERS = [
-  { value: "exact",      label: "Exact"      },
-  { value: "year-only",  label: "Year only"  },
-  { value: "about",      label: "circa"      },
-  { value: "before",     label: "Before"     },
-  { value: "after",      label: "After"      },
-  { value: "between",    label: "Between"    },
-  { value: "estimated",  label: "Estimated"  },
-  { value: "calculated", label: "Calculated" },
-];
+import { QualifierSelect } from "@/components/common/QualifierSelect";
 
 type FormState = {
   given_name: string; family_name: string; maiden_name: string; nickname: string;
@@ -92,18 +82,6 @@ function LocationDisplay({ geocoded, raw }: { geocoded?: Place | null; raw?: str
   return <p className="text-sm font-medium">{label}</p>;
 }
 
-function QualifierSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <Select value={value} onValueChange={(v) => { if (v !== null) onChange(v); }}>
-      <SelectTrigger className="w-28 shrink-0 h-8 text-xs">
-        <span className="text-xs">{DATE_QUALIFIERS.find(q => q.value === value)?.label ?? "Exact"}</span>
-      </SelectTrigger>
-      <SelectContent>
-        {DATE_QUALIFIERS.map(q => <SelectItem key={q.value} value={q.value}>{q.label}</SelectItem>)}
-      </SelectContent>
-    </Select>
-  );
-}
 
 // ─── Relationship grouping ────────────────────────────────────────────────────
 
@@ -234,6 +212,7 @@ export function PersonDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.forPerson(treeId!, personId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId!) });
+      toast.success("Relationship updated");
       setEditingRel(null);
     },
   });
@@ -243,6 +222,7 @@ export function PersonDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.forPerson(treeId!, personId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId!) });
+      toast.success("Relationship deleted");
     },
   });
 
@@ -260,8 +240,10 @@ export function PersonDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.detail(treeId!, personId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.all(treeId!) });
+      toast.success("Changes saved");
       setEditing(false);
     },
+    onError: (e) => { toast.error(e instanceof Error ? e.message : "Failed to save"); },
   });
 
   const deleteMut = useMutation({
@@ -269,8 +251,23 @@ export function PersonDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.all(treeId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId!) });
+      toast.success("Person deleted");
       navigate(`/trees/${treeId}`);
     },
+  });
+
+  const picRef = useRef<HTMLInputElement>(null);
+  const picMut = useMutation({
+    mutationFn: async (file: File) => {
+      const media = await uploadMedia(treeId!, file, { person_id: personId! });
+      await updatePerson(treeId!, personId!, { profile_picture_id: media.id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.persons.detail(treeId!, personId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.media.all(treeId!) });
+      toast.success("Profile picture updated");
+    },
+    onError: (e) => { toast.error(e instanceof Error ? e.message : "Failed to upload picture"); },
   });
 
   if (isLoading) return <LoadingSpinner />;
@@ -396,8 +393,15 @@ export function PersonDetailPage() {
       ]} />
 
       {/* Header */}
+      <input ref={picRef} type="file" accept="image/*" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) picMut.mutate(f); }} />
       <div className="flex items-start gap-4">
-        <Avatar initials={initials} imgUrl={profilePicUrl} size={72} />
+        <button onClick={() => picRef.current?.click()} className="relative group shrink-0" title="Change photo" disabled={picMut.isPending}>
+          <Avatar initials={initials} imgUrl={profilePicUrl} size={72} />
+          <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-white text-xs font-medium">{picMut.isPending ? "…" : "Edit"}</span>
+          </div>
+        </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold leading-tight">
             {name}

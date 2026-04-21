@@ -15,7 +15,8 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
-    max_upload_size_bytes: int = 500 * 1024 * 1024
+    max_upload_size_bytes: int = 100 * 1024 * 1024  # 100MB general limit
+    max_gedcom_size_bytes: int = 50 * 1024 * 1024  # 50MB for GEDCOM files
     storage_path: str = "storage/media"
 
     model_config = {"env_file": ".env", "extra": "ignore"}

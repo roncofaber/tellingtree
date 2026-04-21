@@ -54,6 +54,8 @@ def create_tree(
 ):
     tree = Tree(owner_id=current_user.id, **data.model_dump())
     db.add(tree)
+    db.flush()
+    db.add(TreeMember(tree_id=tree.id, user_id=current_user.id, role="owner"))
     db.commit()
     db.refresh(tree)
     return tree

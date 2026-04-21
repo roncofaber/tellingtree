@@ -36,7 +36,7 @@ class TreeMember(Base):
     __tablename__ = "tree_members"
     __table_args__ = (
         UniqueConstraint("tree_id", "user_id"),
-        CheckConstraint("role IN ('viewer', 'editor', 'admin')", name="valid_role"),
+        CheckConstraint("role IN ('viewer', 'editor', 'admin', 'owner')", name="valid_role"),
     )
 
     tree_id: Mapped[uuid.UUID] = mapped_column(

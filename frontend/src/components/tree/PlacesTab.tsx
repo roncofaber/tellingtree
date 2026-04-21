@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { listTreePlaceDetails, updatePlace, deletePlace, searchPlaces, batchGeocode, type BatchGeocodeEvent } from "@/api/places";
 import { listPersons, updatePerson } from "@/api/persons";
 import { queryKeys } from "@/lib/queryKeys";
@@ -63,7 +64,11 @@ function EditPlaceDialog({ place, treeId, onClose }: { place: Place | null; tree
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
+      toast.success("Place updated");
       onClose();
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to update place");
     },
   });
 
@@ -423,6 +428,10 @@ export function PlacesTab({ treeId }: { treeId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
+      toast.success("Place deleted");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to delete place");
     },
   });
 

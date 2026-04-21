@@ -31,6 +31,7 @@ class StoryResponse(BaseModel):
     event_end_date: date | None
     event_location: str | None
     author_id: uuid.UUID
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     person_ids: list[uuid.UUID] = Field(default_factory=list)

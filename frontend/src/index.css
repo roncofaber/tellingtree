@@ -129,9 +129,88 @@
     }
 }
 
-/* Smooth position transitions for React Flow nodes.
-   CSS transitions only fire on DOM element property changes, not on initial placement,
-   so new nodes appear instantly while existing nodes slide to their new positions. */
-.rf-animated .react-flow__node {
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+/* ─── family-chart light theme ─────────────────────────────────────── */
+
+.family-chart-light .f3,
+.family-chart-light.f3 {
+  --background-color: #f8fafc;
+  --text-color: #334155;
+  --male-color: rgb(147, 197, 253);
+  --female-color: rgb(253, 164, 175);
+  --genderless-color: rgb(203, 213, 225);
+}
+
+/* ── Links ── */
+.family-chart-light .f3 .link,
+.family-chart-light.f3 .link {
+  stroke: var(--fc-link-color, #94a3b8) !important;
+  stroke-width: var(--fc-link-width, 1.5) !important;
+  transition: stroke-width 0.3s ease, stroke 0.3s ease;
+}
+
+.family-chart-light .f3 .link.f3-path-to-main,
+.family-chart-light.f3 .link.f3-path-to-main {
+  stroke: var(--fc-path-accent, var(--fc-link-color, #94a3b8)) !important;
+  stroke-width: 3px !important;
+  z-index: 1;
+}
+
+.family-chart-light .f3 .links_view,
+.family-chart-light.f3 .links_view {
+  isolation: isolate;
+}
+
+.family-chart-light .f3 path.link,
+.family-chart-light.f3 path.link {
+  paint-order: stroke;
+}
+
+.family-chart-light .f3 path.link.f3-path-to-main,
+.family-chart-light.f3 path.link.f3-path-to-main {
+  filter: drop-shadow(0 0 2px var(--fc-path-accent, #3b82f6));
+}
+
+/* ── Cards ── */
+.family-chart-light .f3 .tt-card,
+.family-chart-light.f3 .tt-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.family-chart-light .f3 div.card > div,
+.family-chart-light.f3 div.card > div {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.family-chart-light .f3 div.card:hover .tt-card,
+.family-chart-light.f3 div.card:hover .tt-card {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.family-chart-light .f3 div.card:hover > div,
+.family-chart-light.f3 div.card:hover > div {
+  transform: scale(1.03);
+}
+
+/* ── Mini-tree indicators ── */
+.family-chart-light .f3 .card_family_tree rect,
+.family-chart-light.f3 .card_family_tree rect {
+  fill: #e2e8f0;
+  stroke: #94a3b8;
+  transition: fill 0.2s ease;
+}
+
+.family-chart-light .f3 .card_family_tree:hover rect,
+.family-chart-light.f3 .card_family_tree:hover rect {
+  fill: #cbd5e1;
+}
+
+.family-chart-light .f3 .card_family_tree circle,
+.family-chart-light.f3 .card_family_tree circle {
+  fill: #94a3b8;
 }

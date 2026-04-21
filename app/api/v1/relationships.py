@@ -64,6 +64,29 @@ def create_relationship(
     check_tree_access(db, tree_id, current_user.id, "editor")
     _validate_persons_in_tree(db, tree_id, data.person_a_id, data.person_b_id)
 
+    CONFLICT_PAIRS = {
+        frozenset({"parent", "spouse"}),
+        frozenset({"parent", "partner"}),
+        frozenset({"child", "spouse"}),
+        frozenset({"child", "partner"}),
+    }
+    existing_types = {
+        r.relationship_type
+        for r in db.query(Relationship).filter(
+            Relationship.tree_id == tree_id,
+            or_(
+                (Relationship.person_a_id == data.person_a_id) & (Relationship.person_b_id == data.person_b_id),
+                (Relationship.person_a_id == data.person_b_id) & (Relationship.person_b_id == data.person_a_id),
+            ),
+        ).all()
+    }
+    for existing_type in existing_types:
+        if frozenset({existing_type, data.relationship_type}) in CONFLICT_PAIRS:
+            raise BadRequestError(
+                f"Cannot create '{data.relationship_type}' relationship: "
+                f"these persons already have a '{existing_type}' relationship"
+            )
+
     rel = Relationship(tree_id=tree_id, **data.model_dump())
     db.add(rel)
     db.commit()

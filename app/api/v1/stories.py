@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -35,7 +36,7 @@ def list_stories(
     db: Session = Depends(get_db),
 ):
     check_tree_access(db, tree_id, current_user.id, "viewer")
-    query = db.query(Story).filter(Story.tree_id == tree_id)
+    query = db.query(Story).filter(Story.tree_id == tree_id, Story.deleted_at.is_(None))
 
     if person_id:
         query = query.join(StoryPerson).filter(StoryPerson.person_id == person_id)
@@ -99,7 +100,7 @@ def get_story(
 ):
     check_tree_access(db, tree_id, current_user.id, "viewer")
     story = db.query(Story).filter(
-        Story.id == story_id, Story.tree_id == tree_id
+        Story.id == story_id, Story.tree_id == tree_id, Story.deleted_at.is_(None)
     ).first()
     if story is None:
         raise NotFoundError("Story not found")
@@ -116,7 +117,7 @@ def update_story(
 ):
     check_tree_access(db, tree_id, current_user.id, "editor")
     story = db.query(Story).filter(
-        Story.id == story_id, Story.tree_id == tree_id
+        Story.id == story_id, Story.tree_id == tree_id, Story.deleted_at.is_(None)
     ).first()
     if story is None:
         raise NotFoundError("Story not found")
@@ -138,11 +139,11 @@ def delete_story(
 ):
     check_tree_access(db, tree_id, current_user.id, "editor")
     story = db.query(Story).filter(
-        Story.id == story_id, Story.tree_id == tree_id
+        Story.id == story_id, Story.tree_id == tree_id, Story.deleted_at.is_(None)
     ).first()
     if story is None:
         raise NotFoundError("Story not found")
-    db.delete(story)
+    story.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
 

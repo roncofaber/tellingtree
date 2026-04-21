@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { listRelationships, createRelationship, deleteRelationship, updateRelationship } from "@/api/relationships";
 import type { Relationship } from "@/types/relationship";
 import { listPersons } from "@/api/persons";
@@ -34,7 +35,14 @@ function EditRelDialog({ rel, treeId, onClose }: { rel: Relationship | null; tre
   const [end,      setEnd]      = useState(rel?.end_date ?? "");
   const mut = useMutation({
     mutationFn: () => updateRelationship(treeId, rel!.id, { relationship_type: relType||undefined, start_date: start||undefined, end_date: end||undefined }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId) }); onClose(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId) });
+      toast.success("Relationship updated");
+      onClose();
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to update relationship");
+    },
   });
   if (!rel) return null;
   return (
@@ -136,6 +144,10 @@ export function RelationshipsTab({ treeId }: Props) {
       setDialogOpen(false);
       setPersonA(""); setPersonB(""); setRelType("");
       setStartDate(""); setEndDate("");
+      toast.success("Relationship created");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to create relationship");
     },
   });
 
@@ -143,6 +155,10 @@ export function RelationshipsTab({ treeId }: Props) {
     mutationFn: (relId: string) => deleteRelationship(treeId, relId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId) });
+      toast.success("Relationship deleted");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to delete relationship");
     },
   });
 

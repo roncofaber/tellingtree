@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -26,7 +27,7 @@ def list_persons(
     db: Session = Depends(get_db),
 ):
     check_tree_access(db, tree_id, current_user.id, "viewer")
-    query = db.query(Person).filter(Person.tree_id == tree_id)
+    query = db.query(Person).filter(Person.tree_id == tree_id, Person.deleted_at.is_(None))
     total = query.count()
     items = query.offset(pagination["skip"]).limit(pagination["limit"]).all()
     return PaginatedResponse(
@@ -58,7 +59,7 @@ def get_person(
 ):
     check_tree_access(db, tree_id, current_user.id, "viewer")
     person = db.query(Person).filter(
-        Person.id == person_id, Person.tree_id == tree_id
+        Person.id == person_id, Person.tree_id == tree_id, Person.deleted_at.is_(None)
     ).first()
     if person is None:
         raise NotFoundError("Person not found")
@@ -75,7 +76,7 @@ def update_person(
 ):
     check_tree_access(db, tree_id, current_user.id, "editor")
     person = db.query(Person).filter(
-        Person.id == person_id, Person.tree_id == tree_id
+        Person.id == person_id, Person.tree_id == tree_id, Person.deleted_at.is_(None)
     ).first()
     if person is None:
         raise NotFoundError("Person not found")
@@ -97,11 +98,11 @@ def delete_person(
 ):
     check_tree_access(db, tree_id, current_user.id, "editor")
     person = db.query(Person).filter(
-        Person.id == person_id, Person.tree_id == tree_id
+        Person.id == person_id, Person.tree_id == tree_id, Person.deleted_at.is_(None)
     ).first()
     if person is None:
         raise NotFoundError("Person not found")
-    db.delete(person)
+    person.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
 
@@ -139,5 +140,6 @@ def get_person_network(
     persons = db.query(Person).filter(
         Person.tree_id == tree_id,
         Person.id.in_(visited),
+        Person.deleted_at.is_(None),
     ).all()
     return persons

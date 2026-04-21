@@ -18,6 +18,17 @@ from app.services.storage import get_media_type, is_allowed_mime_type, resolve_p
 router = APIRouter(prefix="/trees/{tree_id}/media", tags=["media"])
 
 
+@router.get("", response_model=list[MediaResponse])
+def list_media(
+    tree_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    check_tree_access(db, tree_id, current_user.id, "viewer")
+    items = db.query(Media).filter(Media.tree_id == tree_id).order_by(Media.created_at.desc()).all()
+    return items
+
+
 @router.post("", response_model=MediaResponse, status_code=201)
 async def upload_media(
     tree_id: uuid.UUID,

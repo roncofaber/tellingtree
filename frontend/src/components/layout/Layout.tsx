@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
+import { Toaster } from "sonner";
 import { Sidebar } from "./Sidebar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 export function Layout() {
@@ -28,6 +29,7 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      <Toaster position="bottom-right" richColors closeButton />
     </div>
   );
 }

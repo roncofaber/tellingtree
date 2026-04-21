@@ -2,6 +2,12 @@ import { apiClient } from "./client";
 import { API_PREFIX } from "@/lib/constants";
 import type { Media } from "@/types/media";
 
+const MAX_MEDIA_SIZE = 100 * 1024 * 1024; // 100MB
+
+export function listMedia(treeId: string): Promise<Media[]> {
+  return apiClient.get<Media[]>(`/trees/${treeId}/media`);
+}
+
 export function uploadMedia(
   treeId: string,
   file: File,
@@ -11,6 +17,9 @@ export function uploadMedia(
     caption?: string;
   }
 ) {
+  if (file.size > MAX_MEDIA_SIZE) {
+    return Promise.reject(new Error(`File too large (${Math.round(file.size / (1024 * 1024))}MB). Maximum is ${MAX_MEDIA_SIZE / (1024 * 1024)}MB.`));
+  }
   const formData = new FormData();
   formData.append("file", file);
   if (options?.story_id) formData.append("story_id", options.story_id);
