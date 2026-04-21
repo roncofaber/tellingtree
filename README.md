@@ -4,13 +4,13 @@ An open-source genealogy application focused on **storytelling and memories** �
 
 ## Features
 
-- **Interactive family graph** — visualise your entire tree at once, centred on any person, with configurable depth (powered by `relatives-tree` + React Flow)
+- **Interactive family graph** — visualise your entire tree at once, centred on any person, with configurable depth and expand/collapse; deep-link to any person from their profile page (powered by React Flow + entitree-flex)
 - **GEDCOM import** — import from Heredis, Gramps, Ancestry, FamilySearch, or any GEDCOM 5.5.1-compatible software
 - **Flexible dates** — handles genealogy-style dates: exact, circa, before/after, between ranges, year-only (`ABT 1850`, `BEF 1900`, etc.)
 - **Full person profiles** — given name, surname, maiden name, nickname, occupation, nationalities, education, bio, profile picture
 - **Stories** — rich narratives linked to one or more people, with events, dates, and locations
 - **Media** — attach photos, audio recordings, video, and documents to stories or people
-- **Places** — geocoded location database (via Nominatim / OpenStreetMap); link birth/death locations to canonical place records with coordinates
+- **Places** — geocoded location database (via Nominatim / OpenStreetMap); interactive map with heatmap, migration lines (birth→death), GeoJSON export, and a coordinate picker in the edit dialog
 - **Tree sharing** — invite family members with fine-grained roles: viewer, editor, admin
 - **Python SDK** — programmatic access to every API endpoint for scripting and data migration
 
@@ -216,7 +216,7 @@ alembic/          Database migration scripts
 | GEDCOM parsing | ged4py |
 | Geocoding | Nominatim (OpenStreetMap), server-side caching |
 | Frontend | React 18, TypeScript, Vite, Shadcn/ui v4 (Base UI), TanStack Query v5 |
-| Graph | React Flow + relatives-tree (couple-as-unit layout) |
+| Graph | React Flow + entitree-flex (couple-as-unit layout, expand/collapse) |
 | Package manager | uv (Python), npm (Node) |
 
 ---

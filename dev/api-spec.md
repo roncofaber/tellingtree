@@ -149,7 +149,10 @@ Global geocoding cache (not tree-scoped). Places are shared across trees.
 | PUT | /places/:place_id | Yes | Update a place (e.g. fix wrong geocode) — sets geocoder="manual" |
 | DELETE | /places/:place_id | Yes | Delete; unlinks birth_place_id/death_place_id from all persons |
 | GET | /trees/:tree_id/places | Yes | viewer+ | List all places referenced by persons in this tree |
+| GET | /trees/:tree_id/places/details | Yes | viewer+ | List places with associated person info (name, field) |
+| POST | /trees/:tree_id/places/geocode-all | Yes | editor+ | Batch geocode all unlinked raw locations (NDJSON stream) |
+| POST | /trees/:tree_id/places/reset-geocoding | Yes | editor+ | Unlink all place FKs from persons in this tree (raw strings preserved) |
 
-`GET /places/search` response: array of PlaceResponse objects `{ id, display_name, city, region, country, country_code, lat, lon, geocoder, geocoded_at, created_at }`.
+`GET /places/search` response: array of PlaceResponse objects `{ id, display_name, city, region, country, country_code, lat, lon, osm_id, osm_type, place_type, geocoder, geocoded_at, created_at }`.
 
-Geocoding: search hits the local DB first (ILIKE on display_name). On a miss it calls Nominatim, stores the result with `geocoder="nominatim"`, and returns it. The browser never calls Nominatim directly — rate limiting is server-side.
+Geocoding: search hits the local DB first (ILIKE on display_name). On a miss it calls Nominatim, stores the result with `geocoder="nominatim"`, and returns it. The browser never calls Nominatim directly — rate limiting is server-side (1 req/sec, thread-safe). Sub-locality fields (hamlet, suburb, neighbourhood, quarter) are parsed and included in `display_name` when present. Coordinate deduplication threshold: 0.001° (~111m).

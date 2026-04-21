@@ -59,12 +59,15 @@ frontend/
 ```
 /login                           → LoginPage
 /register                        → RegisterPage
-/dashboard                       → DashboardPage (tree list)
-/trees/:treeId                   → TreeDetailPage (tabs: persons, relationships, stories, media, members)
+/dashboard                       → DashboardPage (tree list + create/import)
+/trees/:treeId                   → TreeDetailPage (?tab=home|graph|people|relationships|stories|places|media)
 /trees/:treeId/persons/:personId → PersonDetailPage
 /trees/:treeId/stories/:storyId  → StoryDetailPage
+/trees/:treeId/manage            → TreeManagePage (settings, members, danger zone)
 /settings                        → SettingsPage
 ```
+
+Tab navigation is URL-driven (`?tab=…`) so all tabs are deep-linkable. The graph tab accepts `?tab=graph&root=<personId>` to open centred on a specific person.
 
 ## Architecture Principles
 

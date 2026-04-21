@@ -194,6 +194,28 @@ This document tracks key design decisions and user suggestions for the project.
 **Decision**: Added batch geocoding (`POST /trees/{id}/places/geocode-all`) that processes all raw locations with streaming progress, rate-limited to 1 req/sec for Nominatim compliance. Added heatmap toggle to the Places map via `leaflet.heat`. Coordinate-based deduplication (0.005° ~500m) replaces exact name matching for place deduplication.
 **Rationale**: GEDCOM imports create hundreds of raw location strings that need geocoding. One-by-one clicking was impractical. The rate limiter is thread-safe and global, preventing abuse even with concurrent users. The heatmap provides instant visual insight into where a family's history is concentrated geographically.
 
+## UX & Feature Overhaul (2026-04-21)
+
+### Graph: React Flow + entitree-flex (second iteration)
+**Decision**: Replaced `family-chart` with React Flow + `entitree-flex` for the graph view. `family-chart` is kept removed; the new implementation is fully React-declarative with custom node/edge components.
+**Rationale**: `family-chart` mounted imperatively via D3 and was difficult to extend — adding features like expand/collapse, custom popovers, and deep-link navigation required fighting the library's internal state. React Flow gives full control over rendering while `entitree-flex` provides the genealogy-aware layout (couple-as-unit, generation alignment). The new implementation supports: configurable depth, expand/collapse at boundary nodes, animated transitions, add-relative dialog, and "View in Graph" deep-links from person pages via `?tab=graph&root=<personId>`.
+
+### Navigation: Shared Breadcrumb + tab-based routing
+**Decision**: Created a shared `Breadcrumb` component used across all tree pages. All tabs on `TreeDetailPage` are routed via `?tab=…` query param rather than separate URLs.
+**Rationale**: Consistent breadcrumb hierarchy (`Dashboard › Tree Name › Section › Item`) across all pages makes navigation predictable. URL-driven tabs make every view deep-linkable and bookmarkable without adding route complexity.
+
+### Places: Sub-locality geocoding
+**Decision**: Nominatim address parsing now captures sub-locality fields (`hamlet`, `isolated_dwelling`, `suburb`, `neighbourhood`, `quarter`, `city_district`). If present and distinct from the city, the sub-locality is prepended to `display_name` (e.g. "Besano, Arcisate, Lombardia, Italy"). Coordinate dedup threshold tightened from 0.005° to 0.001° (~111m).
+**Rationale**: Italian frazioni (hamlets) are administratively part of a larger comune but geographically distinct. The old parser collapsed them to the parent town; the new one creates separate Place records with accurate coordinates. Tighter dedup prevents merging distinct nearby frazioni.
+
+### Places: Migration lines + GeoJSON export
+**Decision**: Added optional "Migration lines" layer on the map — dashed polylines from each person's birth place to their death place, deduplicated by place-pair with weight proportional to person count. Added one-click GeoJSON export of visible (filtered) places. Added coordinate picker (click-on-map) in the place edit dialog.
+**Rationale**: Migration patterns are one of the most compelling genealogical insights. Rendering them as weighted polylines makes them immediately readable. GeoJSON export enables users to import their data into QGIS, Mapbox, or Google My Maps without any backend work.
+
+### Dashboard: Stats, map, and insights layout
+**Decision**: Redesigned tree home tab with: clickable stat cards (navigate to corresponding tab on click), a map + insights grid, completeness progress bar, and recent people/stories panels.
+**Rationale**: The previous home was a plain list. The new design gives users an at-a-glance overview of their tree's breadth and data quality, and surfaces actionable entry points (click a stat to jump to that tab).
+
 ## User Suggestions
 
 ### Documentation in dev/ folder (2026-04-18)
