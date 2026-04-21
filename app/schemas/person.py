@@ -5,18 +5,18 @@ from pydantic import BaseModel, Field
 
 
 class PersonCreate(BaseModel):
-    given_name: str | None = Field(None, max_length=255)
-    family_name: str | None = Field(None, max_length=255)
-    maiden_name: str | None = Field(None, max_length=255)
-    nickname: str | None = Field(None, max_length=100)
+    given_name: str | None = Field(None, max_length=500)
+    family_name: str | None = Field(None, max_length=500)
+    maiden_name: str | None = Field(None, max_length=500)
+    nickname: str | None = Field(None, max_length=255)
     birth_date: date | None = None
     birth_date_qualifier: str | None = Field(None, max_length=20)
     birth_date_2: date | None = None
-    birth_date_original: str | None = Field(None, max_length=50)
+    birth_date_original: str | None = Field(None, max_length=255)
     death_date: date | None = None
     death_date_qualifier: str | None = Field(None, max_length=20)
     death_date_2: date | None = None
-    death_date_original: str | None = Field(None, max_length=50)
+    death_date_original: str | None = Field(None, max_length=255)
     birth_location: str | None = Field(None, max_length=255)
     birth_place_id: uuid.UUID | None = None
     death_location: str | None = Field(None, max_length=255)
@@ -31,18 +31,18 @@ class PersonCreate(BaseModel):
 
 
 class PersonUpdate(BaseModel):
-    given_name: str | None = Field(None, max_length=255)
-    family_name: str | None = Field(None, max_length=255)
-    maiden_name: str | None = Field(None, max_length=255)
-    nickname: str | None = Field(None, max_length=100)
+    given_name: str | None = Field(None, max_length=500)
+    family_name: str | None = Field(None, max_length=500)
+    maiden_name: str | None = Field(None, max_length=500)
+    nickname: str | None = Field(None, max_length=255)
     birth_date: date | None = None
     birth_date_qualifier: str | None = Field(None, max_length=20)
     birth_date_2: date | None = None
-    birth_date_original: str | None = Field(None, max_length=50)
+    birth_date_original: str | None = Field(None, max_length=255)
     death_date: date | None = None
     death_date_qualifier: str | None = Field(None, max_length=20)
     death_date_2: date | None = None
-    death_date_original: str | None = Field(None, max_length=50)
+    death_date_original: str | None = Field(None, max_length=255)
     birth_location: str | None = Field(None, max_length=255)
     birth_place_id: uuid.UUID | None = None
     death_location: str | None = Field(None, max_length=255)

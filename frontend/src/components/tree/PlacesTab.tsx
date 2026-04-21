@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listTreePlaces, updatePlace, deletePlace, searchPlaces } from "@/api/places";
+import { listTreePlaceDetails, updatePlace, deletePlace, searchPlaces, batchGeocode, type PlaceDetail, type BatchGeocodeEvent } from "@/api/places";
 import { listPersons, updatePerson } from "@/api/persons";
 import { queryKeys } from "@/lib/queryKeys";
-import type { Place } from "@/types/place";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { PlacesMap } from "@/components/tree/PlacesMap";
+import type { Place } from "@/types/place";
 
 // ─── Edit dialog ──────────────────────────────────────────────────────────────
 
@@ -26,7 +28,11 @@ function EditPlaceDialog({ place, treeId, onClose }: { place: Place | null; tree
 
   const mut = useMutation({
     mutationFn: () => updatePlace(place!.id, { display_name: displayName, city: city||null, region: region||null, country: country||null, lat: lat ? parseFloat(lat) : null, lon: lon ? parseFloat(lon) : null }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) }); onClose(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
+      onClose();
+    },
   });
 
   return (
@@ -54,14 +60,119 @@ function EditPlaceDialog({ place, treeId, onClose }: { place: Place | null; tree
   );
 }
 
-// ─── Raw location geocoder ────────────────────────────────────────────────────
+// ─── Geocode dialog ──────────────────────────────────────────────────────────
 
 interface RawLocation { location: string; personIds: string[]; field: "birth" | "death" }
 
+function GeocodeDialog({
+  raw, treeId, onClose,
+}: { raw: RawLocation | null; treeId: string; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [query, setQuery]     = useState(raw?.location ?? "");
+  const [results, setResults] = useState<Place[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [applying, setApplying]   = useState(false);
+  const [error, setError]     = useState("");
+  const didAutoSearch = useRef(false);
+
+  useEffect(() => {
+    if (raw && !didAutoSearch.current) {
+      didAutoSearch.current = true;
+      setQuery(raw.location);
+      doSearchWith(raw.location);
+    }
+    if (!raw) didAutoSearch.current = false;
+  }, [raw]); // eslint-disable-line
+
+  const doSearchWith = async (q: string) => {
+    if (q.trim().length < 2) return;
+    setSearching(true); setError(""); setResults([]);
+    try {
+      const res = await searchPlaces(q.trim());
+      setResults(res);
+      if (res.length === 0) setError("No results found. Try a different query.");
+    } catch { setError("Search failed."); }
+    finally { setSearching(false); }
+  };
+
+  const doSearch = () => doSearchWith(query);
+
+  const applyResult = async (place: Place) => {
+    if (!raw) return;
+    setApplying(true); setError("");
+    try {
+      await Promise.all(raw.personIds.map(id =>
+        updatePerson(treeId, id, raw.field === "birth" ? { birth_place_id: place.id } : { death_place_id: place.id })
+      ));
+      queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
+      onClose();
+    } catch { setError("Failed to link place."); }
+    finally { setApplying(false); }
+  };
+
+  return (
+    <Dialog open={!!raw} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Geocode Location</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Raw:</span> <span className="font-medium">{raw?.location}</span>
+            <span className="text-xs text-muted-foreground ml-2">({raw?.personIds.length} {raw?.personIds.length === 1 ? "person" : "people"})</span>
+          </div>
+
+          <div className="flex gap-2">
+            <Input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search for a place…"
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } }}
+            />
+            <Button onClick={doSearch} disabled={searching || query.trim().length < 2}>
+              {searching ? "…" : "Search"}
+            </Button>
+          </div>
+
+          {error && <p className="text-xs text-destructive">{error}</p>}
+
+          {results.length > 0 && (
+            <div className="border rounded-lg divide-y">
+              {results.map(place => (
+                <div key={place.id} className="flex items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{place.display_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {[place.city, place.region, place.country].filter(Boolean).join(", ")}
+                      {place.lat !== null && place.lon !== null && (
+                        <span className="ml-2 font-mono">{place.lat.toFixed(4)}, {place.lon.toFixed(4)}</span>
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm" variant="outline" className="shrink-0 ml-2"
+                    disabled={applying}
+                    onClick={() => applyResult(place)}
+                  >
+                    Select
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Raw location geocoder ────────────────────────────────────────────────────
+
 function RawLocationsTab({ treeId }: { treeId: string }) {
   const queryClient = useQueryClient();
-  const [geocoding, setGeocoding] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [geocoding, setGeocoding] = useState<RawLocation | null>(null);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<BatchGeocodeEvent | null>(null);
 
   const { data: personsData } = useQuery({
     queryKey: queryKeys.persons.full(treeId),
@@ -89,26 +200,46 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
     }));
   }, [personsData]);
 
-  const geocodeLocation = async (raw: RawLocation) => {
-    setGeocoding(raw.location); setErrors(e => ({ ...e, [raw.location]: "" }));
+  const handleBatchGeocode = async () => {
+    setBatchRunning(true); setBatchProgress(null);
     try {
-      const results = await searchPlaces(raw.location);
-      if (!results.length) { setErrors(e => ({ ...e, [raw.location]: "No match found" })); return; }
-      const place = results[0];
-      await Promise.all(raw.personIds.map(id =>
-        updatePerson(treeId, id, raw.field === "birth" ? { birth_place_id: place.id } : { death_place_id: place.id })
-      ));
+      await batchGeocode(treeId, (event) => setBatchProgress(event));
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
-    } catch { setErrors(e => ({ ...e, [raw.location]: "Failed" })); }
-    finally { setGeocoding(null); }
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
+    } finally { setBatchRunning(false); }
   };
 
-  if (!rawLocations.length) return <p className="text-sm text-muted-foreground py-6 text-center">All locations are geocoded.</p>;
+  if (!rawLocations.length && !batchRunning) return <p className="text-sm text-muted-foreground py-6 text-center">All locations are geocoded.</p>;
 
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">{rawLocations.length} unique unlinked location(s). Click Geocode to search and link automatically.</p>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">{rawLocations.length} unique unlinked location(s).</p>
+        <Button size="sm" variant="outline" disabled={batchRunning || rawLocations.length === 0} onClick={handleBatchGeocode}>
+          {batchRunning ? "Geocoding…" : "Geocode All"}
+        </Button>
+      </div>
+      {batchRunning && batchProgress && (
+        <div className="space-y-1.5 rounded-lg border p-3">
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">
+              {batchProgress.phase === "done"
+                ? `Done — ${batchProgress.linked} linked, ${batchProgress.failed} failed`
+                : `${batchProgress.current} / ${batchProgress.total} — ${batchProgress.location}`}
+            </span>
+            {batchProgress.status === "linked" && <span className="text-green-600">Linked</span>}
+            {batchProgress.status === "no_match" && <span className="text-amber-600">No match</span>}
+            {batchProgress.status === "error" && <span className="text-destructive">Error</span>}
+          </div>
+          {batchProgress.total && batchProgress.current !== undefined && (
+            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full rounded-full bg-primary transition-all duration-300"
+                style={{ width: `${Math.round((batchProgress.current / batchProgress.total) * 100)}%` }} />
+            </div>
+          )}
+        </div>
+      )}
       <Table>
         <TableHeader><TableRow><TableHead>Raw Location</TableHead><TableHead>Field</TableHead><TableHead>People</TableHead><TableHead className="w-28">Action</TableHead></TableRow></TableHeader>
         <TableBody>
@@ -118,17 +249,13 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
               <TableCell><Badge variant="outline" className="text-xs capitalize">{raw.field}</Badge></TableCell>
               <TableCell className="text-sm text-muted-foreground">{raw.personIds.length}</TableCell>
               <TableCell>
-                <div className="flex items-center gap-1">
-                  <Button size="sm" variant="outline" disabled={geocoding === raw.location} onClick={() => geocodeLocation(raw)}>
-                    {geocoding === raw.location ? "…" : "Geocode"}
-                  </Button>
-                  {errors[raw.location] && <span className="text-xs text-destructive">{errors[raw.location]}</span>}
-                </div>
+                <Button size="sm" variant="outline" onClick={() => setGeocoding(raw)}>Geocode</Button>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      <GeocodeDialog raw={geocoding} treeId={treeId} onClose={() => setGeocoding(null)} />
     </div>
   );
 }
@@ -139,15 +266,20 @@ export function PlacesTab({ treeId }: { treeId: string }) {
   const queryClient = useQueryClient();
   const [search,  setSearch]  = useState("");
   const [editing, setEditing] = useState<Place | null>(null);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   const { data: places, isLoading } = useQuery({
-    queryKey: queryKeys.places.forTree(treeId),
-    queryFn:  () => listTreePlaces(treeId),
+    queryKey: queryKeys.places.forTreeDetails(treeId),
+    queryFn:  () => listTreePlaceDetails(treeId),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deletePlace(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
+    },
   });
 
   const filtered = useMemo(() => {
@@ -178,15 +310,42 @@ export function PlacesTab({ treeId }: { treeId: string }) {
 
         <TabsContent value="geocoded">
           <div className="space-y-3">
+            {/* Map */}
+            {geocoded > 0 && (
+              <div className="space-y-2">
+                <div className="flex justify-end">
+                  <button
+                    className={`text-xs px-2 py-1 rounded border transition-colors ${showHeatmap ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-200 hover:bg-slate-50"}`}
+                    onClick={() => setShowHeatmap(h => !h)}
+                  >
+                    {showHeatmap ? "Markers" : "Heatmap"}
+                  </button>
+                </div>
+                <div className="h-[350px] rounded-lg border overflow-hidden">
+                  <PlacesMap
+                    places={filtered}
+                    selectedPlaceId={selectedPlaceId}
+                    onMarkerClick={setSelectedPlaceId}
+                    heatmap={showHeatmap}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Table */}
             <Input placeholder="Filter places…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-56" />
             {filtered.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">{search ? "No places match." : "No places yet. Link a location to a person to get started."}</p>
             ) : (
               <Table>
-                <TableHeader><TableRow><TableHead>Place</TableHead><TableHead>Country</TableHead><TableHead>Coordinates</TableHead><TableHead>Source</TableHead><TableHead className="w-28">Actions</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Place</TableHead><TableHead>Country</TableHead><TableHead>Coordinates</TableHead><TableHead>People</TableHead><TableHead>Source</TableHead><TableHead className="w-28">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {filtered.map(p => (
-                    <TableRow key={p.id}>
+                    <TableRow
+                      key={p.id}
+                      className={`cursor-pointer ${p.id === selectedPlaceId ? "bg-primary/5" : ""}`}
+                      onClick={() => setSelectedPlaceId(prev => prev === p.id ? null : p.id)}
+                    >
                       <TableCell>
                         <p className="font-medium text-sm">{p.display_name}</p>
                         {p.city && p.city !== p.display_name && <p className="text-xs text-muted-foreground">{[p.city, p.region].filter(Boolean).join(", ")}</p>}
@@ -195,9 +354,28 @@ export function PlacesTab({ treeId }: { treeId: string }) {
                       <TableCell className="text-xs font-mono text-muted-foreground">
                         {p.lat !== null && p.lon !== null ? `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}` : <span className="text-amber-500">Missing</span>}
                       </TableCell>
+                      <TableCell>
+                        {p.persons.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {p.persons.slice(0, 3).map(pr => (
+                              <Link
+                                key={`${pr.id}-${pr.field}`}
+                                to={`/trees/${treeId}/persons/${pr.id}`}
+                                className="block text-xs text-primary hover:underline"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                {pr.name} <span className="text-muted-foreground">({pr.field})</span>
+                              </Link>
+                            ))}
+                            {p.persons.length > 3 && <p className="text-xs text-muted-foreground">+{p.persons.length - 3} more</p>}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell><Badge variant={p.geocoder === "manual" ? "secondary" : "outline"} className="text-xs">{p.geocoder ?? "—"}</Badge></TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                           <Button size="sm" variant="outline" onClick={() => setEditing(p)}>Edit</Button>
                           <Button size="sm" variant="destructive" onClick={() => deleteMut.mutate(p.id)}>Del</Button>
                         </div>

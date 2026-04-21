@@ -46,6 +46,7 @@ export const queryKeys = {
   places: {
     search:  (q: string)      => ["places", "search", q]  as const,
     detail:  (id: string)     => ["places", id]            as const,
-    forTree: (treeId: string) => ["trees", treeId, "places"] as const,
+    forTree:   (treeId: string) => ["trees", treeId, "places"] as const,
+    forTreeDetails: (treeId: string) => ["trees", treeId, "places", "details"] as const,
   },
 };

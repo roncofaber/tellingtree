@@ -290,7 +290,7 @@ export function PersonDetailPage() {
               <Label className="text-xs">Sex</Label>
               <Select value={form.gender} onValueChange={(v) => { if (v !== null) setForm(f => ({ ...f, gender: v })); }}>
                 <SelectTrigger className="w-full"><span className={form.gender ? undefined : "text-muted-foreground"}>{form.gender ? form.gender.charAt(0).toUpperCase() + form.gender.slice(1) : "Select sex"}</span></SelectTrigger>
-                <SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem><SelectItem value="unknown">Unknown</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem><SelectItem value="other">Other</SelectItem><SelectItem value="unknown">Unknown</SelectItem></SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
@@ -320,7 +320,13 @@ export function PersonDetailPage() {
   return (
     <div className="space-y-5 max-w-2xl">
       {/* Breadcrumb */}
-      <Link to={`/trees/${treeId}`} className="text-sm text-muted-foreground hover:text-foreground">← Overview</Link>
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <Link to={`/trees/${treeId}`} className="hover:text-foreground">← Tree</Link>
+        <span>/</span>
+        <Link to={`/trees/${treeId}?tab=graph`} className="hover:text-foreground">Graph</Link>
+        <span>/</span>
+        <Link to={`/trees/${treeId}?tab=people`} className="hover:text-foreground">People</Link>
+      </div>
 
       {/* Header */}
       <div className="flex items-start gap-4">

@@ -1,9 +1,14 @@
 """Nominatim geocoding service (stdlib only, no extra dependencies)."""
 
 import json
+import time
+import threading
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+
+_last_request_lock = threading.Lock()
+_last_request_time = 0.0
 
 
 @dataclass
@@ -50,8 +55,20 @@ def _parse_address(r: dict) -> GeoResult:
     )
 
 
+def _rate_limit():
+    """Ensure at least 1 second between Nominatim requests."""
+    global _last_request_time
+    with _last_request_lock:
+        now = time.monotonic()
+        wait = 1.0 - (now - _last_request_time)
+        if wait > 0:
+            time.sleep(wait)
+        _last_request_time = time.monotonic()
+
+
 def geocode(query: str, limit: int = 6) -> list[GeoResult]:
     """Call Nominatim and return geocoded results. Returns [] on any error."""
+    _rate_limit()
     params = urllib.parse.urlencode({
         "q": query,
         "format": "json",

@@ -182,6 +182,18 @@ This document tracks key design decisions and user suggestions for the project.
 **Decision**: The tree detail page was split into three distinct areas: `/trees/:id` (overview with stats and recent activity), `/trees/:id/graph` (full-screen graph view), and `/trees/:id/manage/*` (sidebar management UI for persons, relationships, stories, media, places, members).
 **Rationale**: The original single-page tabs layout mixed browsing and management. The new structure separates concerns: the overview page is the landing page, the graph is the primary browsing interface, and manage is for data entry/correction. This matches how genealogy tools like Gramps and Ancestry structure their UX.
 
+### Graph: family-chart adoption (2026-04-20)
+**Decision**: Replaced React Flow + entitree-flex (+ earlier relatives-tree) with `family-chart`, a D3-based library purpose-built for family tree visualization. The library handles layout, rendering, zoom/pan, couple placement, and DAG deduplication out of the box. Mounted imperatively via `useRef`/`useEffect` since it's D3-based, not React-declarative.
+**Rationale**: The React Flow approach required hundreds of lines of custom layout code that never worked reliably — spouses weren't adjacent, children appeared above parents, and the coordinate mapping was fragile. After trying three different layout engines (relatives-tree, entitree-flex, dagre), we evaluated what production genealogy apps use (Topola: d3-flextree, Gramps: D3, dTree: D3) and found `family-chart` — a complete solution that handles all genealogy-specific layout challenges natively. Reduced GraphTab from ~700 lines to ~350 lines.
+
+### GEDCOM: Robust import pipeline (2026-04-20)
+**Decision**: The GEDCOM importer was hardened with: (1) HTML sanitization for malformed NOTE records, (2) `sys.setrecursionlimit(10000)` for ged4py's recursive parsing, (3) column widening (names to 500, date originals to 255) with safety truncation, (4) in-memory duplicate detection via hash sets (O(1) per record), (5) NDJSON streaming progress events, (6) batch commits every 50 records for fault tolerance, (7) own DB session in the streaming endpoint to avoid FastAPI dependency lifecycle issues.
+**Rationale**: The Queen Elizabeth II GEDCOM file (4,683 persons, 105K lines) exposed multiple failure modes: raw HTML in NOTE fields crashed ged4py's parser, names like "Jesus Christ" exceeded VARCHAR(255), a single DB error cascaded to all subsequent records via session rollback, and the synchronous endpoint timed out on large files. Each fix was driven by a specific real-world failure.
+
+### Geocoding: Batch processing and heatmap (2026-04-20)
+**Decision**: Added batch geocoding (`POST /trees/{id}/places/geocode-all`) that processes all raw locations with streaming progress, rate-limited to 1 req/sec for Nominatim compliance. Added heatmap toggle to the Places map via `leaflet.heat`. Coordinate-based deduplication (0.005° ~500m) replaces exact name matching for place deduplication.
+**Rationale**: GEDCOM imports create hundreds of raw location strings that need geocoding. One-by-one clicking was impractical. The rate limiter is thread-safe and global, preventing abuse even with concurrent users. The heatmap provides instant visual insight into where a family's history is concentrated geographically.
+
 ## User Suggestions
 
 ### Documentation in dev/ folder (2026-04-18)

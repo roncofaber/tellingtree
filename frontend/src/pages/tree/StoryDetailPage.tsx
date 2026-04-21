@@ -70,12 +70,11 @@ export function StoryDetailPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <Link
-        to={`/trees/${treeId}`}
-        className="text-sm text-muted-foreground hover:text-foreground"
-      >
-        &larr; Back to Tree
-      </Link>
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <Link to={`/trees/${treeId}`} className="hover:text-foreground">&larr; Tree</Link>
+        <span>/</span>
+        <Link to={`/trees/${treeId}?tab=stories`} className="hover:text-foreground">Stories</Link>
+      </div>
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{story.title}</h1>

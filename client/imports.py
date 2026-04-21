@@ -12,6 +12,7 @@ class ImportResult:
     persons_created: int
     relationships_created: int
     skipped: int
+    duplicates_skipped: int
     errors: list[str]
 
 
@@ -42,5 +43,6 @@ class ImportsClient(BaseClient):
             persons_created=data["persons_created"],
             relationships_created=data["relationships_created"],
             skipped=data["skipped"],
+            duplicates_skipped=data.get("duplicates_skipped", 0),
             errors=data["errors"],
         )

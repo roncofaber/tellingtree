@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getTree, updateTree, deleteTree } from "@/api/trees";
 import { listPersons } from "@/api/persons";
-import { importGedcom, type ImportResult } from "@/api/imports";
+import { importGedcomStreaming, type ImportResult, type ImportProgress } from "@/api/imports";
 import { queryKeys } from "@/lib/queryKeys";
 import { loadGraphSettings, saveGraphSettings } from "@/lib/graphSettings";
 import { Button } from "@/components/ui/button";
@@ -26,10 +26,12 @@ export function TreeManagePage() {
   const [editMode, setEditMode]   = useState(false);
 
   // GEDCOM import
-  const [importOpen,   setImportOpen]   = useState(false);
-  const [importing,    setImporting]    = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [importError,  setImportError]  = useState<string | null>(null);
+  const [importOpen,     setImportOpen]     = useState(false);
+  const [importing,      setImporting]      = useState(false);
+  const [importResult,   setImportResult]   = useState<ImportResult | null>(null);
+  const [importError,    setImportError]    = useState<string | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+  const [selectedFile,   setSelectedFile]   = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Delete
@@ -74,11 +76,12 @@ export function TreeManagePage() {
   };
 
   const handleImport = async () => {
-    const file = fileRef.current?.files?.[0];
-    if (!file) return;
-    setImporting(true); setImportResult(null); setImportError(null);
+    if (!selectedFile) return;
+    setImporting(true); setImportResult(null); setImportError(null); setImportProgress(null);
     try {
-      const result = await importGedcom(treeId!, file);
+      const result = await importGedcomStreaming(treeId!, selectedFile, (event) => {
+        setImportProgress(event);
+      });
       setImportResult(result);
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.all(treeId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId!) });
@@ -88,7 +91,7 @@ export function TreeManagePage() {
   };
 
   const resetImport = () => {
-    setImportResult(null); setImportError(null);
+    setImportResult(null); setImportError(null); setImportProgress(null); setSelectedFile(null);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -250,36 +253,66 @@ export function TreeManagePage() {
       </Card>
 
       {/* Import dialog */}
-      <Dialog open={importOpen} onOpenChange={(o) => { setImportOpen(o); if (!o) resetImport(); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Import GEDCOM</DialogTitle></DialogHeader>
-          {!importResult ? (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Select a <code>.ged</code> file to import.</p>
-              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                Running this twice creates duplicates. Import only into an empty tree or on first import.
-              </p>
-              <input ref={fileRef} type="file" accept=".ged,.gedcom"
-                className="block w-full text-sm text-muted-foreground file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-muted file:text-foreground hover:file:bg-muted/80"
-              />
-              {importError && <p className="text-sm text-destructive">{importError}</p>}
-              <Button className="w-full" onClick={handleImport} disabled={importing}>
-                {importing ? "Importing…" : "Import"}
-              </Button>
+      <Dialog open={importOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle>Import GEDCOM</DialogTitle>
+              {!importing && (
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => { setImportOpen(false); resetImport(); }}>
+                  <span className="sr-only">Close</span>&times;
+                </Button>
+              )}
             </div>
-          ) : (
+          </DialogHeader>
+
+          {importResult ? (
             <div className="space-y-4">
               <div className="rounded-lg border p-4 space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">People added</span><span className="font-semibold">{importResult.persons_created}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Relationships added</span><span className="font-semibold">{importResult.relationships_created}</span></div>
                 {importResult.skipped > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Skipped</span><span className="font-semibold">{importResult.skipped}</span></div>}
+                {importResult.duplicates_skipped > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Duplicates skipped</span><span className="font-semibold">{importResult.duplicates_skipped}</span></div>}
               </div>
               {importResult.errors.length > 0 && (
                 <div className="text-xs text-destructive space-y-1 max-h-32 overflow-y-auto">
                   {importResult.errors.map((e, i) => <p key={i}>{e}</p>)}
                 </div>
               )}
-              <Button className="w-full" onClick={() => setImportOpen(false)}>Done</Button>
+              <Button className="w-full" onClick={() => { setImportOpen(false); resetImport(); }}>Done</Button>
+            </div>
+          ) : importing && importProgress ? (
+            <div className="space-y-4 py-2">
+              <p className="text-sm font-medium">
+                {importProgress.phase === "parsing" && "Parsing file..."}
+                {importProgress.phase === "persons" && `Importing people... ${importProgress.current ?? 0} / ${importProgress.total ?? "?"}`}
+                {importProgress.phase === "relationships" && `Creating relationships... ${importProgress.current ?? 0} / ${importProgress.total ?? "?"}`}
+              </p>
+              {importProgress.total && importProgress.current !== undefined && (
+                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-300"
+                    style={{ width: `${Math.round((importProgress.current / importProgress.total) * 100)}%` }}
+                  />
+                </div>
+              )}
+              {importError && <p className="text-sm text-destructive">{importError}</p>}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">Select a <code>.ged</code> file to import.</p>
+              <p className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                Duplicate detection is enabled. People with matching names and dates will be reused instead of duplicated.
+              </p>
+              <input ref={fileRef} type="file" accept=".ged,.gedcom" className="hidden"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              />
+              <div className="flex items-center gap-3">
+                <Button variant="outline" onClick={() => fileRef.current?.click()}>Choose file</Button>
+                <span className="text-sm text-muted-foreground truncate">{selectedFile?.name ?? "No file selected"}</span>
+              </div>
+              {importError && <p className="text-sm text-destructive">{importError}</p>}
+              <Button className="w-full" onClick={handleImport} disabled={!selectedFile}>Import</Button>
             </div>
           )}
         </DialogContent>

@@ -128,3 +128,19 @@
     @apply font-sans;
     }
 }
+
+.family-chart-light .f3 {
+  --background-color: #f8fafc;
+  --text-color: #334155;
+  --male-color: rgb(147, 197, 253);
+  --female-color: rgb(253, 164, 175);
+  --genderless-color: rgb(203, 213, 225);
+}
+
+.family-chart-light .f3 .link {
+  stroke: #94a3b8 !important;
+}
+
+.family-chart-light .f3 .card-main .card-inner {
+  outline-color: #3b82f6;
+}

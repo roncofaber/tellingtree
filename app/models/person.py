@@ -13,18 +13,18 @@ class Person(Base):
     tree_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    given_name: Mapped[str | None] = mapped_column(String(255))
-    family_name: Mapped[str | None] = mapped_column(String(255))
-    maiden_name: Mapped[str | None] = mapped_column(String(255))
-    nickname: Mapped[str | None] = mapped_column(String(100))
+    given_name: Mapped[str | None] = mapped_column(String(500))
+    family_name: Mapped[str | None] = mapped_column(String(500))
+    maiden_name: Mapped[str | None] = mapped_column(String(500))
+    nickname: Mapped[str | None] = mapped_column(String(255))
     birth_date: Mapped[date | None] = mapped_column(Date)
     birth_date_qualifier: Mapped[str | None] = mapped_column(String(20))
     birth_date_2: Mapped[date | None] = mapped_column(Date)
-    birth_date_original: Mapped[str | None] = mapped_column(String(50))
+    birth_date_original: Mapped[str | None] = mapped_column(String(255))
     death_date: Mapped[date | None] = mapped_column(Date)
     death_date_qualifier: Mapped[str | None] = mapped_column(String(20))
     death_date_2: Mapped[date | None] = mapped_column(Date)
-    death_date_original: Mapped[str | None] = mapped_column(String(50))
+    death_date_original: Mapped[str | None] = mapped_column(String(255))
     birth_location: Mapped[str | None] = mapped_column(String(255))
     birth_place_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("places.id", ondelete="SET NULL"), index=True

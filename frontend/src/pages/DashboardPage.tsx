@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listTrees, createTree } from "@/api/trees";
+import { importGedcomStreaming, type ImportProgress } from "@/api/imports";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,9 +20,13 @@ import { ErrorMessage } from "@/components/common/ErrorMessage";
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newTreeName, setNewTreeName] = useState("");
   const [newTreeDescription, setNewTreeDescription] = useState("");
+  const [gedcomFile, setGedcomFile] = useState<File | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+  const gedcomRef = useRef<HTMLInputElement>(null);
 
   const {
     data: trees,
@@ -32,16 +37,26 @@ export function DashboardPage() {
     queryFn: () => listTrees(0, 100),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: { name: string; description?: string }) =>
-      createTree(data),
-    onSuccess: () => {
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    setCreating(true); setCreateError(null); setImportProgress(null);
+    try {
+      const tree = await createTree({ name: newTreeName, description: newTreeDescription || undefined });
+      if (gedcomFile) {
+        await importGedcomStreaming(tree.id, gedcomFile, (event) => {
+          setImportProgress(event);
+        });
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.trees.all() });
       setDialogOpen(false);
-      setNewTreeName("");
-      setNewTreeDescription("");
-    },
-  });
+      setNewTreeName(""); setNewTreeDescription(""); setGedcomFile(null); setImportProgress(null);
+      navigate(`/trees/${tree.id}`);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "Failed");
+    } finally { setCreating(false); }
+  };
 
   if (isLoading) return <LoadingSpinner />;
   if (error)
@@ -51,7 +66,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Your Trees</h1>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(o) => { if (!creating) setDialogOpen(o); }}>
           <DialogTrigger className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
             New Tree
           </DialogTrigger>
@@ -60,13 +75,7 @@ export function DashboardPage() {
               <DialogTitle>Create a New Tree</DialogTitle>
             </DialogHeader>
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                createMutation.mutate({
-                  name: newTreeName,
-                  description: newTreeDescription || undefined,
-                });
-              }}
+              onSubmit={(e) => { e.preventDefault(); handleCreate(); }}
               className="space-y-4"
             >
               <div className="space-y-2">
@@ -77,6 +86,7 @@ export function DashboardPage() {
                   onChange={(e) => setNewTreeName(e.target.value)}
                   placeholder="The Johnson Family"
                   required
+                  disabled={creating}
                 />
               </div>
               <div className="space-y-2">
@@ -86,21 +96,40 @@ export function DashboardPage() {
                   value={newTreeDescription}
                   onChange={(e) => setNewTreeDescription(e.target.value)}
                   placeholder="Our family history and stories"
+                  disabled={creating}
                 />
               </div>
-              {createMutation.error && (
-                <p className="text-sm text-destructive">
-                  {createMutation.error instanceof Error
-                    ? createMutation.error.message
-                    : "Failed to create tree"}
-                </p>
+              <div className="space-y-2">
+                <Label className="text-xs">Import GEDCOM <span className="text-muted-foreground">(optional)</span></Label>
+                <input ref={gedcomRef} type="file" accept=".ged,.gedcom" className="hidden"
+                  onChange={(e) => setGedcomFile(e.target.files?.[0] ?? null)}
+                />
+                <div className="flex items-center gap-3">
+                  <Button type="button" variant="outline" size="sm" onClick={() => gedcomRef.current?.click()} disabled={creating}>
+                    Choose file
+                  </Button>
+                  <span className="text-xs text-muted-foreground truncate">{gedcomFile?.name ?? "No file selected"}</span>
+                </div>
+              </div>
+              {creating && importProgress && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {importProgress.phase === "parsing" && "Parsing file..."}
+                    {importProgress.phase === "persons" && `Importing people... ${importProgress.current ?? 0} / ${importProgress.total ?? "?"}`}
+                    {importProgress.phase === "relationships" && `Creating relationships... ${importProgress.current ?? 0} / ${importProgress.total ?? "?"}`}
+                    {importProgress.phase === "done" && "Done!"}
+                  </p>
+                  {importProgress.total && importProgress.current !== undefined && (
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${Math.round((importProgress.current / importProgress.total) * 100)}%` }} />
+                    </div>
+                  )}
+                </div>
               )}
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={createMutation.isPending}
-              >
-                {createMutation.isPending ? "Creating..." : "Create Tree"}
+              {createError && <p className="text-sm text-destructive">{createError}</p>}
+              <Button type="submit" className="w-full" disabled={creating}>
+                {creating ? (importProgress ? "Importing..." : "Creating...") : gedcomFile ? "Create & Import" : "Create Tree"}
               </Button>
             </form>
           </DialogContent>

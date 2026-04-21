@@ -38,3 +38,13 @@ class PlaceResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PlacePersonRef(BaseModel):
+    id: uuid.UUID
+    name: str
+    field: str
+
+
+class PlaceDetailResponse(PlaceResponse):
+    persons: list[PlacePersonRef] = []

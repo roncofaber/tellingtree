@@ -1,7 +1,17 @@
 """Tests for GEDCOM 5.5.1 import endpoint."""
 
 import io
+import json
 import pytest
+
+
+def parse_ndjson_result(response) -> dict:
+    """Parse an NDJSON streaming response and return the final 'done' event."""
+    assert response.status_code == 200
+    lines = [l for l in response.text.strip().split("\n") if l.strip()]
+    last = json.loads(lines[-1])
+    assert last["phase"] == "done"
+    return last
 
 
 MINIMAL_GEDCOM = b"""\
@@ -62,8 +72,7 @@ def test_gedcom_import_basic(client, auth_headers, tree_id):
         headers=auth_headers,
         files={"file": ("test.ged", io.BytesIO(MINIMAL_GEDCOM), "application/octet-stream")},
     )
-    assert r.status_code == 200
-    data = r.json()
+    data = parse_ndjson_result(r)
     assert data["persons_created"] == 3
     assert data["relationships_created"] >= 3  # 1 spouse + 2 parent-child pairs
     assert data["errors"] == []
@@ -160,6 +169,59 @@ def test_gedcom_import_parent_child(client, auth_headers, tree_id):
     ).json()["items"]
     parent_rels = [r for r in rels if r["relationship_type"] == "parent"]
     assert len(parent_rels) == 2  # father→child + mother→child
+
+
+GEDCOM_WITH_HTML = b"""\
+0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Boadicea /ICENIANS/
+2 GIVN Boadicea
+2 SURN ICENIANS
+1 SEX F
+1 NOTE
+2 CONT <div id="j1">Boadicea Queen of Icenians</div>
+<div id="j2"><br />Also known as Boudicca</div>
+<p>Famous warrior queen.</p>
+2 CONT Regular continuation here.
+0 TRLR
+"""
+
+
+def test_gedcom_import_html_notes(client, auth_headers, tree_id):
+    """GEDCOM files with HTML in NOTE records are sanitized and imported."""
+    r = client.post(
+        f"/api/v1/trees/{tree_id}/import/gedcom",
+        headers=auth_headers,
+        files={"file": ("test.ged", io.BytesIO(GEDCOM_WITH_HTML), "application/octet-stream")},
+    )
+    data = parse_ndjson_result(r)
+    assert data["persons_created"] == 1
+    assert data["errors"] == []
+
+
+def test_gedcom_import_duplicate_detection(client, auth_headers, tree_id):
+    """Importing the same GEDCOM twice detects duplicates on the second import."""
+    r1 = client.post(
+        f"/api/v1/trees/{tree_id}/import/gedcom",
+        headers=auth_headers,
+        files={"file": ("test.ged", io.BytesIO(MINIMAL_GEDCOM), "application/octet-stream")},
+    )
+    data1 = parse_ndjson_result(r1)
+    assert data1["persons_created"] == 3
+    assert data1["duplicates_skipped"] == 0
+
+    r2 = client.post(
+        f"/api/v1/trees/{tree_id}/import/gedcom",
+        headers=auth_headers,
+        files={"file": ("test.ged", io.BytesIO(MINIMAL_GEDCOM), "application/octet-stream")},
+    )
+    data2 = parse_ndjson_result(r2)
+    assert data2["persons_created"] == 0
+    assert data2["duplicates_skipped"] == 3
 
 
 def test_gedcom_import_invalid_file(client, auth_headers, tree_id):

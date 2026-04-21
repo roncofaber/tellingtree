@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listRelationships, createRelationship, deleteRelationship, updateRelationship } from "@/api/relationships";
 import type { Relationship } from "@/types/relationship";
@@ -87,10 +88,15 @@ export function RelationshipsTab({ treeId }: Props) {
     queryFn: () => listPersons(treeId, 0, 50000),
   });
 
-  // Only show primary relationship types (hide auto-derived child records)
-  const displayedRels = (rels?.items ?? [])
-    .filter((r) => PRIMARY_TYPES.has(r.relationship_type))
-    .filter((r) => typeFilter === "all" || r.relationship_type === typeFilter);
+  const [search, setSearch] = useState("");
+
+  const displayedRels = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (rels?.items ?? [])
+      .filter((r) => PRIMARY_TYPES.has(r.relationship_type))
+      .filter((r) => typeFilter === "all" || r.relationship_type === typeFilter)
+      .filter((r) => !q || personName(r.person_a_id).toLowerCase().includes(q) || personName(r.person_b_id).toLowerCase().includes(q));
+  }, [rels, typeFilter, search, persons]); // eslint-disable-line
 
   const personName = (id: string) => {
     const p = persons?.items.find((p) => p.id === id);
@@ -227,8 +233,9 @@ export function RelationshipsTab({ treeId }: Props) {
         </Dialog>
       </div>
 
-      {/* Type filter */}
+      {/* Filters */}
       <div className="flex items-center gap-2">
+        <Input placeholder="Search by name…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-48" />
         <Select value={typeFilter} onValueChange={v => { if (v !== null) setTypeFilter(v); }}>
           <SelectTrigger className="h-8 w-36"><span className="text-sm">{typeFilter === "all" ? "All types" : TYPE_LABELS[typeFilter]}</span></SelectTrigger>
           <SelectContent>
@@ -258,9 +265,20 @@ export function RelationshipsTab({ treeId }: Props) {
               : null;
             return (
             <TableRow key={rel.id}>
-              <TableCell>{personName(rel.person_a_id)}</TableCell>
-              <TableCell>{TYPE_LABELS[rel.relationship_type] ?? rel.relationship_type}</TableCell>
-              <TableCell>{personName(rel.person_b_id)}</TableCell>
+              <TableCell>
+                <Link to={`/trees/${treeId}/persons/${rel.person_a_id}`} className="text-sm text-primary hover:underline">
+                  {personName(rel.person_a_id)}
+                </Link>
+              </TableCell>
+              <TableCell className="text-sm">
+                {TYPE_LABELS[rel.relationship_type] ?? rel.relationship_type}
+                {rel.relationship_type === "parent" ? " →" : " ↔"}
+              </TableCell>
+              <TableCell>
+                <Link to={`/trees/${treeId}/persons/${rel.person_b_id}`} className="text-sm text-primary hover:underline">
+                  {personName(rel.person_b_id)}
+                </Link>
+              </TableCell>
               <TableCell className="text-muted-foreground text-sm">{dateRange ?? "—"}</TableCell>
               <TableCell>
                 <div className="flex gap-1">
