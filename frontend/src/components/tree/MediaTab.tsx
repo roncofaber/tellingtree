@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { listMedia, uploadMedia, deleteMedia, getMediaDownloadUrl } from "@/api/media";
+import { listMedia, uploadMedia, deleteMedia, fetchMediaBlob } from "@/api/media";
+import { AuthImage } from "@/components/common/AuthImage";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,7 +102,7 @@ export function MediaTab({ treeId }: { treeId: string }) {
               {/* Preview */}
               <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
                 {isImage(m) ? (
-                  <img src={getMediaDownloadUrl(treeId, m.id)} alt={m.original_filename} className="w-full h-full object-cover" />
+                  <AuthImage treeId={treeId} mediaId={m.id} alt={m.original_filename} className="w-full h-full object-cover" />
                 ) : (
                   <div className="text-center p-3">
                     <div className="text-2xl mb-1">
@@ -120,7 +121,12 @@ export function MediaTab({ treeId }: { treeId: string }) {
                     <span className="text-[10px] text-muted-foreground">{formatSize(m.size_bytes)}</span>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <a href={getMediaDownloadUrl(treeId, m.id)} download className="text-[10px] text-primary hover:underline">DL</a>
+                    <button onClick={async () => {
+                      const url = await fetchMediaBlob(treeId, m.id);
+                      const a = document.createElement("a");
+                      a.href = url; a.download = m.original_filename; a.click();
+                      URL.revokeObjectURL(url);
+                    }} className="text-[10px] text-primary hover:underline">DL</button>
                     <button onClick={() => deleteMut.mutate(m.id)} className="text-[10px] text-destructive hover:underline">Del</button>
                   </div>
                 </div>

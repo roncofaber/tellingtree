@@ -75,7 +75,7 @@ def create_story(
     db.flush()
 
     for pid in data.person_ids:
-        person = db.query(Person).filter(Person.id == pid, Person.tree_id == tree_id).first()
+        person = db.query(Person).filter(Person.id == pid, Person.tree_id == tree_id, Person.deleted_at.is_(None)).first()
         if person is None:
             raise BadRequestError(f"Person {pid} not found in this tree")
         db.add(StoryPerson(story_id=story.id, person_id=pid))
@@ -131,7 +131,7 @@ def update_story(
         current_ids = {sp.person_id for sp in story.person_links}
         wanted_ids = set(person_ids)
         for pid in wanted_ids - current_ids:
-            person = db.query(Person).filter(Person.id == pid, Person.tree_id == tree_id).first()
+            person = db.query(Person).filter(Person.id == pid, Person.tree_id == tree_id, Person.deleted_at.is_(None)).first()
             if person is None:
                 raise BadRequestError(f"Person {pid} not found in this tree")
             db.add(StoryPerson(story_id=story.id, person_id=pid))

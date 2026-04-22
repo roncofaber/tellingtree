@@ -36,6 +36,18 @@ export function getMediaDownloadUrl(treeId: string, mediaId: string) {
   return `${API_PREFIX}/trees/${treeId}/media/${mediaId}/download`;
 }
 
+export async function fetchMediaBlob(treeId: string, mediaId: string): Promise<string> {
+  const { getAccessToken } = await import("./client");
+  const token = getAccessToken();
+  const resp = await fetch(`${API_PREFIX}/trees/${treeId}/media/${mediaId}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
+  });
+  if (!resp.ok) throw new Error("Failed to fetch media");
+  const blob = await resp.blob();
+  return URL.createObjectURL(blob);
+}
+
 export function deleteMedia(treeId: string, mediaId: string) {
   return apiClient.delete<void>(`/trees/${treeId}/media/${mediaId}`);
 }

@@ -32,21 +32,28 @@ def search_places(
     """Search existing places, geocode on cache miss."""
     clean_q = preprocess_query(q)
 
-    # 1. Local DB search (try both original and cleaned query)
+    # 1. Local DB search — prefer prefix matches over substring
     local = (
         db.query(Place)
-        .filter(Place.display_name.ilike(f"%{clean_q}%"))
+        .filter(Place.display_name.ilike(f"{clean_q}%"))
         .limit(6)
         .all()
     )
     if not local and clean_q != q:
         local = (
             db.query(Place)
-            .filter(Place.display_name.ilike(f"%{q}%"))
+            .filter(Place.display_name.ilike(f"{q}%"))
             .limit(6)
             .all()
         )
-    if len(local) >= 3:
+    if not local:
+        local = (
+            db.query(Place)
+            .filter(Place.display_name.ilike(f"%{clean_q}%"))
+            .limit(6)
+            .all()
+        )
+    if len(local) >= 6:
         return local
 
     # 2. Geocode via Nominatim for fresh results

@@ -33,7 +33,7 @@ def _validate_persons_in_tree(db: Session, tree_id: uuid.UUID, person_a_id: uuid
     if person_a_id == person_b_id:
         raise BadRequestError("Cannot create a relationship between a person and themselves")
     for pid in (person_a_id, person_b_id):
-        p = db.query(Person).filter(Person.id == pid, Person.tree_id == tree_id).first()
+        p = db.query(Person).filter(Person.id == pid, Person.tree_id == tree_id, Person.deleted_at.is_(None)).first()
         if p is None:
             raise NotFoundError(f"Person {pid} not found in this tree")
 

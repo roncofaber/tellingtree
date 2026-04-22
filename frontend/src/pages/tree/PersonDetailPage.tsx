@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { toast } from "sonner";
 import { useParams, Link, useNavigate } from "react-router-dom";
@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPerson, updatePerson, deletePerson, listPersons } from "@/api/persons";
 import { getTree } from "@/api/trees";
 import { getPlace } from "@/api/places";
-import { getMediaDownloadUrl, uploadMedia } from "@/api/media";
+import { fetchMediaBlob, uploadMedia } from "@/api/media";
 import { listPersonRelationships, updateRelationship, deleteRelationship } from "@/api/relationships";
 import { listStories } from "@/api/stories";
 import { formatFlexDate } from "@/lib/dates";
@@ -275,6 +275,17 @@ export function PersonDetailPage() {
     onError: (e) => { toast.error(e instanceof Error ? e.message : "Failed to upload picture"); },
   });
 
+  const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!person?.profile_picture_id || !treeId) { setProfilePicUrl(null); return; }
+    let revoke: string | null = null;
+    fetchMediaBlob(treeId, person.profile_picture_id).then(url => {
+      revoke = url;
+      setProfilePicUrl(url);
+    }).catch(() => setProfilePicUrl(null));
+    return () => { if (revoke) URL.revokeObjectURL(revoke); };
+  }, [person?.profile_picture_id, treeId]);
+
   if (isLoading) return <LoadingSpinner />;
   if (error) return <ErrorMessage message="Person not found" />;
   if (!person) return null;
@@ -296,7 +307,6 @@ export function PersonDetailPage() {
 
   const name     = [person.given_name, person.family_name].filter(Boolean).join(" ") || "Unnamed";
   const initials = ((person.given_name?.[0] ?? "") + (person.family_name?.[0] ?? "")).toUpperCase() || "?";
-  const profilePicUrl = person.profile_picture_id ? getMediaDownloadUrl(treeId!, person.profile_picture_id) : null;
 
   const birthFmt = formatFlexDate(person.birth_date, person.birth_date_qualifier, person.birth_date_2, person.birth_date_original);
   const deathFmt = formatFlexDate(person.death_date, person.death_date_qualifier, person.death_date_2, person.death_date_original);

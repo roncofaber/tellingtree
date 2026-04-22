@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { API_PREFIX } from "@/lib/constants";
 import { setTokens, clearTokens, setOnAuthFailure } from "@/api/client";
 import * as authApi from "@/api/auth";
@@ -28,17 +29,16 @@ interface AuthState {
 export const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
-  // Start as loading so ProtectedRoute waits for the silent-refresh attempt
   const [isLoading, setIsLoading] = useState(true);
 
   const logout = useCallback(async () => {
-    // Clear state immediately so the UI responds without waiting for the network
     clearTokens();
     setUser(null);
-    // Then ask the server to clear the HttpOnly cookie
+    queryClient.clear();
     try { await authApi.logout(); } catch { /* ignore */ }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     setOnAuthFailure(() => { clearTokens(); setUser(null); });
@@ -69,9 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (username: string, password: string) => {
+    queryClient.clear();
     const token = await authApi.login({ username, password });
-    // Refresh token is now in an HttpOnly cookie set by the server.
-    // We only keep the short-lived access token in memory.
     setTokens(token.access_token);
     const me = await authApi.getMe();
     setUser(me);

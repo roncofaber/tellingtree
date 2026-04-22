@@ -5,9 +5,11 @@ import { toast } from "sonner";
 import { getStory, updateStory, deleteStory, addTagToStory, removeTagFromStory } from "@/api/stories";
 import { getTree } from "@/api/trees";
 import { listPersons } from "@/api/persons";
+import { listRelationships } from "@/api/relationships";
 import { listTags, createTag, updateTag, deleteTag } from "@/api/tags";
 import { listTreePlaces } from "@/api/places";
 import { queryKeys } from "@/lib/queryKeys";
+import { loadGraphSettings } from "@/lib/graphSettings";
 import { Link } from "react-router-dom";
 import { Plus, X, Pencil, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { StoryEditor, extractMentionPersonIds } from "@/components/editor/StoryEditor";
+import { StoryAttachments } from "@/components/tree/StoryAttachments";
 import { StoryRenderer } from "@/components/editor/StoryRenderer";
 import { LocationInput } from "@/components/common/LocationInput";
 
@@ -308,7 +311,15 @@ export function StoryDetailPage() {
     enabled: !!treeId,
   });
 
+  const { data: relsData } = useQuery({
+    queryKey: queryKeys.relationships.full(treeId!),
+    queryFn: () => listRelationships(treeId!, 0, 50000),
+    enabled: !!treeId,
+  });
+
   const persons = personsData?.items ?? [];
+  const relationships = relsData?.items ?? [];
+  const myPersonId = treeId ? loadGraphSettings(treeId).myPersonId : null;
 
   const updateMut = useMutation({
     mutationFn: () => {
@@ -388,6 +399,9 @@ export function StoryDetailPage() {
               initialContent={story.content}
               onChange={setEditorContent}
               persons={persons}
+              treeId={treeId}
+              relationships={relationships}
+              myPersonId={myPersonId}
             />
           </div>
 
@@ -409,6 +423,11 @@ export function StoryDetailPage() {
             <Button type="submit" disabled={updateMut.isPending}>Save</Button>
             <Button type="button" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
           </div>
+
+          {/* Attachments (edit mode) */}
+          {treeId && storyId && (
+            <StoryAttachments treeId={treeId} storyId={storyId} editable />
+          )}
         </form>
       ) : (
         <>
@@ -436,6 +455,11 @@ export function StoryDetailPage() {
           <div className="prose prose-sm max-w-none py-2">
             <StoryRenderer content={story.content} persons={persons} places={placesData ?? undefined} treeSlug={treeSlug!} />
           </div>
+
+          {/* Attachments */}
+          {treeId && storyId && (
+            <StoryAttachments treeId={treeId} storyId={storyId} />
+          )}
 
           {/* Divider */}
           {(story.tag_ids.length > 0 || story.person_ids.length > 0 || treeId) && <div className="border-t" />}

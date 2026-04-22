@@ -275,14 +275,14 @@ export function RelationshipsTab({ treeId }: Props) {
         </Dialog>
       </div>
 
-      <Table>
+      <Table className="table-fixed w-full">
         <TableHeader>
           <TableRow>
-            <TableHead>Person A</TableHead>
-            <TableHead className="hidden sm:table-cell">Relationship</TableHead>
-            <TableHead>Person B</TableHead>
-            <TableHead className="hidden md:table-cell">Period</TableHead>
-            <TableHead className="w-24">Actions</TableHead>
+            <TableHead className="w-[30%]">Person A</TableHead>
+            <TableHead className="hidden sm:table-cell w-[15%]">Type</TableHead>
+            <TableHead className="w-[30%]">Person B</TableHead>
+            <TableHead className="hidden md:table-cell w-[10%]">Period</TableHead>
+            <TableHead className="w-[15%] text-center">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -292,7 +292,7 @@ export function RelationshipsTab({ treeId }: Props) {
               : null;
             return (
             <TableRow key={rel.id}>
-              <TableCell>
+              <TableCell className="truncate">
                 <Link to={`/trees/${treeSlug}/people/${rel.person_a_id}`} className="text-sm text-primary hover:underline">
                   {personName(rel.person_a_id)}
                 </Link>
@@ -301,14 +301,14 @@ export function RelationshipsTab({ treeId }: Props) {
                 {TYPE_LABELS[rel.relationship_type] ?? rel.relationship_type}
                 {rel.relationship_type === "parent" ? " →" : " ↔"}
               </TableCell>
-              <TableCell>
+              <TableCell className="truncate">
                 <Link to={`/trees/${treeSlug}/people/${rel.person_b_id}`} className="text-sm text-primary hover:underline">
                   {personName(rel.person_b_id)}
                 </Link>
               </TableCell>
               <TableCell className="text-muted-foreground text-sm hidden md:table-cell">{dateRange ?? "—"}</TableCell>
               <TableCell>
-                <div className="flex gap-1">
+                <div className="flex gap-1 justify-center">
                   <Button size="sm" variant="outline" onClick={() => setEditing(rel)}>Edit</Button>
                   <Button size="sm" variant="destructive" onClick={() => deleteMut.mutate(rel.id)}>Del</Button>
                 </div>

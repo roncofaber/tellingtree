@@ -17,6 +17,13 @@ export interface StoryMarker {
   year?: string;
 }
 
+export interface MapFilters {
+  showBirth: boolean;
+  showDeath: boolean;
+  showStories: boolean;
+  highlightPersonId?: string | null;
+}
+
 interface Props {
   places: PlaceWithPersons[];
   selectedPlaceId?: string | null;
@@ -24,7 +31,44 @@ interface Props {
   heatmap?: boolean;
   showMigration?: boolean;
   storyMarkers?: StoryMarker[];
+  filters?: MapFilters;
 }
+
+function makeDotIcon(color: string, size = 12, highlight = false): L.DivIcon {
+  const s = highlight ? size + 4 : size;
+  const border = highlight ? "3px solid #fff" : "2px solid #fff";
+  const shadow = highlight ? "0 0 8px 2px rgba(0,0,0,.3)" : "0 1px 3px rgba(0,0,0,.25)";
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:${s}px;height:${s}px;background:${color};border:${border};border-radius:50%;box-shadow:${shadow};"></div>`,
+    iconSize: [s, s],
+    iconAnchor: [s / 2, s / 2],
+    popupAnchor: [0, -s / 2 - 2],
+  });
+}
+
+const BIRTH_COLOR = "#3b82f6";
+const DEATH_COLOR = "#6b7280";
+const STORY_COLOR = "#f59e0b";
+const HIGHLIGHT_COLOR = "#10b981";
+
+const birthIcon = makeDotIcon(BIRTH_COLOR);
+const deathIcon = makeDotIcon(DEATH_COLOR);
+const storyDotIcon = makeDotIcon(STORY_COLOR);
+
+const highlightIcon = L.divIcon({
+  className: "",
+  html: `<div style="position:relative;width:28px;height:41px;">
+    <svg width="28" height="41" viewBox="0 0 28 41" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 27 14 27s14-16.5 14-27C28 6.268 21.732 0 14 0z" fill="${HIGHLIGHT_COLOR}"/>
+      <circle cx="14" cy="14" r="7" fill="#fff"/>
+      <circle cx="14" cy="14" r="4" fill="${HIGHLIGHT_COLOR}"/>
+    </svg>
+  </div>`,
+  iconSize: [28, 41],
+  iconAnchor: [14, 41],
+  popupAnchor: [0, -36],
+});
 
 const defaultIcon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -73,92 +117,76 @@ function HeatmapLayer({ places }: { places: PlaceWithPersons[] }) {
   useEffect(() => {
     if (layerRef.current) {
       map.removeLayer(layerRef.current);
+      layerRef.current = null;
     }
-    const points: [number, number, number][] = [];
-    for (const p of places) {
-      if (p.lat == null || p.lon == null) continue;
-      const count = p.persons ? p.persons.length : 1;
-      points.push([p.lat, p.lon, Math.log(count + 1)]);
-    }
-    if (points.length > 0) {
-      const heat = (L as unknown as { heatLayer: (pts: [number, number, number][], opts: object) => L.Layer }).heatLayer(points, {
-        radius: 25,
-        blur: 15,
-        maxZoom: 10,
-        max: Math.max(...points.map(p => p[2])),
-        gradient: { 0.2: "#ffffb2", 0.4: "#fed976", 0.6: "#feb24c", 0.8: "#f03b20", 1: "#bd0026" },
+
+    const pts = places
+      .filter(p => p.lat != null && p.lon != null)
+      .map(p => {
+        const count = p.persons?.length ?? 1;
+        return [p.lat!, p.lon!, Math.log(count + 1)] as [number, number, number];
+      });
+
+    if (pts.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const heat = (L as any).heatLayer(pts, {
+        radius: 30,
+        blur: 20,
+        maxZoom: 12,
+        gradient: { 0.2: "blue", 0.4: "lime", 0.6: "yellow", 0.8: "orange", 1: "red" },
       });
       heat.addTo(map);
       layerRef.current = heat;
     }
+
     return () => {
-      if (layerRef.current) map.removeLayer(layerRef.current);
+      if (layerRef.current) {
+        map.removeLayer(layerRef.current);
+        layerRef.current = null;
+      }
     };
   }, [places, map]);
 
   return null;
 }
 
-// Draws dashed polylines between birth and death places for each person.
-// Deduplicates by place-pair so shared routes are drawn once with increased weight.
 function MigrationLayer({ places }: { places: PlaceWithPersons[] }) {
-  const lines = useMemo(() => {
-    const placeById = new Map<string, PlaceWithPersons>();
-    for (const p of places) placeById.set(p.id, p);
-
-    const birthByPerson = new Map<string, string>();
-    const deathByPerson = new Map<string, string>();
-    for (const place of places) {
-      for (const pr of place.persons ?? []) {
-        if (pr.field === "birth") birthByPerson.set(pr.id, place.id);
-        else if (pr.field === "death") deathByPerson.set(pr.id, place.id);
+  const routes = useMemo(() => {
+    const personPlaces = new Map<string, { birth?: PlaceWithPersons; death?: PlaceWithPersons }>();
+    for (const p of places) {
+      for (const pr of p.persons ?? []) {
+        const entry = personPlaces.get(pr.id) ?? {};
+        if (pr.field === "birth") entry.birth = p;
+        if (pr.field === "death") entry.death = p;
+        personPlaces.set(pr.id, entry);
       }
     }
 
-    // Aggregate by place-pair key to merge duplicate routes
-    const byPair = new Map<string, { from: [number, number]; to: [number, number]; count: number; names: string[] }>();
-    for (const [personId, birthPlaceId] of birthByPerson) {
-      const deathPlaceId = deathByPerson.get(personId);
-      if (!deathPlaceId || deathPlaceId === birthPlaceId) continue;
-      const bp = placeById.get(birthPlaceId);
-      const dp = placeById.get(deathPlaceId);
-      if (!bp?.lat || !bp.lon || !dp?.lat || !dp.lon) continue;
-
-      const pairKey = `${birthPlaceId}-${deathPlaceId}`;
-      const person = bp.persons?.find(p => p.id === personId);
-      const name = person?.name ?? "";
-      if (byPair.has(pairKey)) {
-        const entry = byPair.get(pairKey)!;
-        entry.count++;
-        if (name) entry.names.push(name);
-      } else {
-        byPair.set(pairKey, {
-          from: [bp.lat, bp.lon],
-          to: [dp.lat, dp.lon],
-          count: 1,
-          names: name ? [name] : [],
-        });
-      }
+    const routeMap = new Map<string, { from: PlaceWithPersons; to: PlaceWithPersons; persons: string[] }>();
+    for (const [id, { birth, death }] of personPlaces) {
+      if (!birth || !death || birth.id === death.id) continue;
+      if (birth.lat == null || birth.lon == null || death.lat == null || death.lon == null) continue;
+      const key = `${birth.id}:${death.id}`;
+      const entry = routeMap.get(key);
+      if (entry) { entry.persons.push(id); }
+      else { routeMap.set(key, { from: birth, to: death, persons: [id] }); }
     }
-    return [...byPair.entries()].map(([key, v]) => ({ key, ...v }));
+
+    return [...routeMap.values()];
   }, [places]);
 
   return (
     <>
-      {lines.map(line => (
+      {routes.map((r, i) => (
         <Polyline
-          key={line.key}
-          positions={[line.from, line.to]}
-          color="#3b82f6"
-          weight={Math.min(1 + line.count, 5)}
-          opacity={0.65}
-          dashArray="5 6"
+          key={i}
+          positions={[[r.from.lat!, r.from.lon!], [r.to.lat!, r.to.lon!]]}
+          pathOptions={{ color: "#6366f1", weight: Math.min(1 + r.persons.length, 5), dashArray: "6 4", opacity: 0.6 }}
         >
           <Popup>
-            <div className="text-xs space-y-0.5 min-w-[120px]">
-              <p className="font-semibold text-slate-700">Migration</p>
-              {line.names.slice(0, 5).map((n, i) => <p key={i}>{n}</p>)}
-              {line.names.length > 5 && <p className="text-slate-400">+{line.names.length - 5} more</p>}
+            <div className="text-xs space-y-0.5">
+              <p className="font-medium">{r.from.display_name} → {r.to.display_name}</p>
+              <p className="text-muted-foreground">{r.persons.length} person{r.persons.length !== 1 ? "s" : ""}</p>
             </div>
           </Popup>
         </Polyline>
@@ -167,28 +195,15 @@ function MigrationLayer({ places }: { places: PlaceWithPersons[] }) {
   );
 }
 
-// ─── Coordinate picker ────────────────────────────────────────────────────────
-
 function MapClickHandler({ onPick }: { onPick: (lat: number, lon: number) => void }) {
   useMapEvents({ click: (e) => onPick(e.latlng.lat, e.latlng.lng) });
   return null;
 }
 
-export function PickerMap({
-  lat, lon, onPick,
-}: {
-  lat: number | null;
-  lon: number | null;
-  onPick: (lat: number, lon: number) => void;
-}) {
-  const center: [number, number] = lat != null && lon != null ? [lat, lon] : [20, 0];
+export function PickerMap({ lat, lon, onPick }: { lat: number | null; lon: number | null; onPick: (lat: number, lon: number) => void }) {
+  const center: [number, number] = lat != null && lon != null ? [lat, lon] : [46.8, 8.2];
   return (
-    <MapContainer
-      center={center}
-      zoom={lat != null ? 10 : 2}
-      className="h-48 w-full rounded-lg cursor-crosshair"
-      scrollWheelZoom
-    >
+    <MapContainer center={center} zoom={lat != null ? 12 : 5} className="h-[200px] w-full" scrollWheelZoom>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -203,17 +218,9 @@ export function PickerMap({
 
 // ─── Main map ─────────────────────────────────────────────────────────────────
 
-const storyIcon = L.divIcon({
-  className: "",
-  html: '<div style="width:14px;height:14px;background:#f59e0b;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3);"></div>',
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-  popupAnchor: [0, -10],
-});
-
-export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = false, showMigration = false, storyMarkers = [] }: Props) {
+export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = false, showMigration = false, storyMarkers = [], filters }: Props) {
   const geocoded = places.filter((p) => p.lat !== null && p.lon !== null);
-  if (geocoded.length === 0) {
+  if (geocoded.length === 0 && storyMarkers.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted-foreground bg-muted rounded-lg border">
         No geocoded places to display.
@@ -221,9 +228,18 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
     );
   }
 
+  const center: [number, number] = geocoded.length > 0
+    ? [geocoded[0].lat!, geocoded[0].lon!]
+    : [storyMarkers[0].lat, storyMarkers[0].lon];
+
+  const showBirth = filters?.showBirth ?? true;
+  const showDeath = filters?.showDeath ?? true;
+  const showStoriesF = filters?.showStories ?? true;
+  const hlId = filters?.highlightPersonId;
+
   return (
     <MapContainer
-      center={[geocoded[0].lat!, geocoded[0].lon!]}
+      center={center}
       zoom={5}
       className="h-full w-full rounded-lg"
       scrollWheelZoom
@@ -232,40 +248,59 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitBounds places={geocoded} storyMarkers={storyMarkers} />
+      <FitBounds places={geocoded} storyMarkers={showStoriesF ? storyMarkers : []} />
       {heatmap ? (
         <HeatmapLayer places={geocoded} />
       ) : (
-        geocoded.map((p) => (
-          <Marker
-            key={p.id}
-            position={[p.lat!, p.lon!]}
-            icon={p.id === selectedPlaceId ? selectedIcon : defaultIcon}
-            eventHandlers={{ click: () => onMarkerClick?.(p.id) }}
-          >
-            <Popup>
-              <div className="text-sm space-y-1 min-w-[140px]">
-                <p className="font-semibold">{p.display_name}</p>
-                {p.persons && p.persons.length > 0 && (
-                  <div className="text-xs text-slate-600 border-t pt-1 mt-1 space-y-0.5">
-                    {p.persons.slice(0, 6).map((pr) => (
-                      <p key={`${pr.id}-${pr.field}`}>
-                        {pr.name} <span className="text-slate-400">({pr.field})</span>
-                      </p>
-                    ))}
-                    {p.persons.length > 6 && (
-                      <p className="text-slate-400">+{p.persons.length - 6} more</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))
+        geocoded.map((p) => {
+          const hasBirth = p.persons?.some(pr => pr.field === "birth");
+          const hasDeath = p.persons?.some(pr => pr.field === "death");
+          const isHighlighted = hlId && p.persons?.some(pr => pr.id === hlId);
+
+          if (!isHighlighted) {
+            if (!showBirth && !showDeath) return null;
+            if (!showBirth && hasBirth && !hasDeath) return null;
+            if (!showDeath && hasDeath && !hasBirth) return null;
+          }
+
+          const icon = isHighlighted
+            ? highlightIcon
+            : selectedPlaceId === p.id
+              ? selectedIcon
+              : hasBirth && hasDeath
+                ? birthIcon
+                : hasDeath
+                  ? deathIcon
+                  : birthIcon;
+
+          return (
+            <Marker
+              key={p.id}
+              position={[p.lat!, p.lon!]}
+              icon={icon}
+              eventHandlers={{ click: () => onMarkerClick?.(p.id) }}
+            >
+              <Popup maxHeight={200}>
+                <div className="text-sm space-y-1 min-w-[160px]">
+                  <p className="font-semibold">{p.display_name}</p>
+                  {p.persons && p.persons.length > 0 && (
+                    <div className="text-xs border-t pt-1 mt-1 space-y-0.5">
+                      {[...p.persons].sort((a, b) => a.name.localeCompare(b.name)).map((pr) => (
+                        <p key={`${pr.id}-${pr.field}`} className="text-muted-foreground">
+                          {pr.name} <span className="opacity-60">({pr.field})</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })
       )}
       {showMigration && <MigrationLayer places={geocoded} />}
-      {storyMarkers.map(s => (
-        <Marker key={`story-${s.id}`} position={[s.lat, s.lon]} icon={storyIcon}>
+      {showStoriesF && storyMarkers.map(s => (
+        <Marker key={`story-${s.id}`} position={[s.lat, s.lon]} icon={storyDotIcon}>
           <Popup>
             <div className="text-sm min-w-[120px]">
               <p className="font-semibold">{s.title}</p>

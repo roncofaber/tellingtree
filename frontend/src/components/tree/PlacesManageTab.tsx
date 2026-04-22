@@ -239,7 +239,8 @@ function EditPlaceDialog({ place, treeId, onClose }: { place: Place | null; tree
 
 // ─── Geocode dialog ──────────────────────────────────────────────────────────
 
-interface RawLocation { location: string; personIds: string[]; field: "birth" | "death" }
+interface PersonFieldLink { personId: string; field: "birth" | "death" }
+interface RawLocation { location: string; personIds: string[]; field: "birth" | "death"; links: PersonFieldLink[] }
 
 function preprocessLocationQuery(raw: string): string {
   const parts = raw.split(",").map(p => p.trim()).filter(Boolean);
@@ -291,8 +292,8 @@ function GeocodeDialog({
     if (!raw) return;
     setApplying(true); setError("");
     try {
-      await Promise.all(raw.personIds.map(id =>
-        updatePerson(treeId, id, raw.field === "birth" ? { birth_place_id: place.id } : { death_place_id: place.id })
+      await Promise.all((raw.links ?? raw.personIds.map(id => ({ personId: id, field: raw.field }))).map(link =>
+        updatePerson(treeId, link.personId, link.field === "birth" ? { birth_place_id: place.id } : { death_place_id: place.id })
       ));
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
@@ -375,6 +376,7 @@ function GeocodeDialog({
 interface RawLocationEntry extends RawLocation {
   geocodedPlace: string | null;
   placeId: string | null;
+  fields: Set<"birth" | "death">;
 }
 
 function RawLocationsTab({ treeId }: { treeId: string }) {
@@ -383,6 +385,8 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchGeocodeEvent | null>(null);
   const [filter, setFilter] = useState<"all" | "unlinked" | "linked">("all");
+  const [search, setSearch] = useState("");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const { data: personsData } = useQuery({
     queryKey: queryKeys.persons.full(treeId),
@@ -403,27 +407,25 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
   const allLocations = useMemo((): RawLocationEntry[] => {
     const map = new Map<string, RawLocationEntry>();
     for (const p of personsData?.items ?? []) {
-      if (p.birth_location) {
-        const key = `birth:${p.birth_location}`;
-        const existing = map.get(key);
-        if (existing) { existing.personIds.push(p.id); }
-        else {
-          map.set(key, {
-            location: p.birth_location, personIds: [p.id], field: "birth",
-            geocodedPlace: p.birth_place_id ? (placeNameMap.get(p.birth_place_id) ?? "Unknown place") : null,
-            placeId: p.birth_place_id,
-          });
-        }
-      }
-      if (p.death_location) {
-        const key = `death:${p.death_location}`;
-        const existing = map.get(key);
-        if (existing) { existing.personIds.push(p.id); }
-        else {
-          map.set(key, {
-            location: p.death_location, personIds: [p.id], field: "death",
-            geocodedPlace: p.death_place_id ? (placeNameMap.get(p.death_place_id) ?? "Unknown place") : null,
-            placeId: p.death_place_id,
+      for (const f of ["birth", "death"] as const) {
+        const loc = f === "birth" ? p.birth_location : p.death_location;
+        const pid = f === "birth" ? p.birth_place_id : p.death_place_id;
+        if (!loc) continue;
+        const existing = map.get(loc);
+        if (existing) {
+          if (!existing.personIds.includes(p.id)) existing.personIds.push(p.id);
+          existing.links.push({ personId: p.id, field: f });
+          existing.fields.add(f);
+          if (!existing.placeId && pid) {
+            existing.placeId = pid;
+            existing.geocodedPlace = placeNameMap.get(pid) ?? "Unknown place";
+          }
+        } else {
+          map.set(loc, {
+            location: loc, personIds: [p.id], field: f,
+            links: [{ personId: p.id, field: f }],
+            geocodedPlace: pid ? (placeNameMap.get(pid) ?? "Unknown place") : null,
+            placeId: pid, fields: new Set([f]),
           });
         }
       }
@@ -432,17 +434,30 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
   }, [personsData, placeNameMap]);
 
   const filtered = useMemo(() => {
-    if (filter === "unlinked") return allLocations.filter(l => !l.placeId);
-    if (filter === "linked") return allLocations.filter(l => !!l.placeId);
-    return allLocations;
-  }, [allLocations, filter]);
+    let items = allLocations;
+    if (filter === "unlinked") items = items.filter(l => !l.placeId);
+    if (filter === "linked") items = items.filter(l => !!l.placeId);
+    const q = search.trim().toLowerCase();
+    if (q) items = items.filter(l => l.location.toLowerCase().includes(q) || (l.geocodedPlace ?? "").toLowerCase().includes(q));
+    return items.sort((a, b) => a.location.localeCompare(b.location));
+  }, [allLocations, filter, search]);
 
   const unlinkedCount = allLocations.filter(l => !l.placeId).length;
 
   const handleBatchGeocode = async () => {
     setBatchRunning(true); setBatchProgress(null);
+    let lastRefresh = 0;
     try {
-      await batchGeocode(treeId, (event) => setBatchProgress(event));
+      await batchGeocode(treeId, (event) => {
+        setBatchProgress(event);
+        const now = Date.now();
+        if (event.status === "linked" && now - lastRefresh > 3000) {
+          lastRefresh = now;
+          queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
+        }
+      });
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
@@ -454,7 +469,8 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-center justify-between">
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center flex-1 min-w-0">
+          <Input placeholder="Filter locations…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-full sm:w-48" />
           {(["all", "unlinked", "linked"] as const).map(f => (
             <button
               key={f}
@@ -468,6 +484,7 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
               {f === "all" ? `All (${allLocations.length})` : f === "unlinked" ? `Unlinked (${unlinkedCount})` : `Linked (${allLocations.length - unlinkedCount})`}
             </button>
           ))}
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{filtered.length} shown</span>
         </div>
         <Button size="sm" variant="outline" disabled={batchRunning || unlinkedCount === 0} onClick={handleBatchGeocode}>
           {batchRunning ? "Geocoding…" : `Geocode All (${unlinkedCount})`}
@@ -493,39 +510,38 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
           )}
         </div>
       )}
-      <div className="overflow-x-auto">
-        <Table>
+      <Table className="table-fixed w-full">
         <TableHeader>
           <TableRow>
-            <TableHead className="min-w-[180px]">Raw Location</TableHead>
-            <TableHead className="min-w-[180px]">Geocoded To</TableHead>
-            <TableHead className="w-16">Field</TableHead>
-            <TableHead className="w-16">People</TableHead>
-            <TableHead className="w-36">Action</TableHead>
+            <TableHead className="w-[38%]">Raw Location</TableHead>
+            <TableHead className="w-[38%]">Geocoded To</TableHead>
+            <TableHead className="hidden sm:table-cell w-[9%]">People</TableHead>
+            <TableHead className="w-[15%] text-center">Action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.map(raw => (
-            <TableRow key={`${raw.field}:${raw.location}`}>
-              <TableCell className="text-sm font-medium">{raw.location}</TableCell>
-              <TableCell>
+          {filtered.map(raw => {
+            const rowKey = raw.location;
+            const isExpanded = expandedRow === rowKey;
+            return (<>
+            <TableRow key={rowKey} className="cursor-pointer" onClick={() => setExpandedRow(isExpanded ? null : rowKey)}>
+              <TableCell className="text-sm font-medium truncate">{raw.location}</TableCell>
+              <TableCell className="truncate">
                 {raw.geocodedPlace ? (
                   <span className="text-sm text-emerald-600">{raw.geocodedPlace}</span>
                 ) : (
                   <span className="text-sm text-amber-500 italic">Not linked</span>
                 )}
               </TableCell>
-              <TableCell><Badge variant="outline" className="text-xs capitalize">{raw.field}</Badge></TableCell>
-              <TableCell className="text-sm text-muted-foreground">{raw.personIds.length}</TableCell>
+              <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{raw.personIds.length}</TableCell>
               <TableCell>
-                <div className="flex gap-1">
+                <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
                   <Button size="sm" variant="outline" onClick={() => setGeocoding(raw)}>
                     {raw.placeId ? "Remap" : "Geocode"}
                   </Button>
                   {raw.placeId && (
                     <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => {
-                      const personField = raw.field === "birth" ? { birth_place_id: null } : { death_place_id: null };
-                      Promise.all(raw.personIds.map(pid => updatePerson(treeId, pid, personField))).then(() => {
+                      Promise.all(raw.links.map(link => updatePerson(treeId, link.personId, link.field === "birth" ? { birth_place_id: null } : { death_place_id: null }))).then(() => {
                         queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId) });
                         queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
                         queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
@@ -538,10 +554,21 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
                 </div>
               </TableCell>
             </TableRow>
-          ))}
+            {isExpanded && (
+              <TableRow key={`${rowKey}-detail`}>
+                <TableCell colSpan={4} className="bg-muted/30 px-4 py-3">
+                  <div className="space-y-1 text-sm">
+                    <p><span className="text-muted-foreground">Raw:</span> {raw.location}</p>
+                    {raw.geocodedPlace && <p><span className="text-muted-foreground">Geocoded to:</span> <span className="text-emerald-600">{raw.geocodedPlace}</span></p>}
+                    <p><span className="text-muted-foreground">Used as:</span> {[...raw.fields].join(" & ")} · <span className="text-muted-foreground">People:</span> {raw.personIds.length}</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+            </>);
+          })}
         </TableBody>
       </Table>
-      </div>
       <GeocodeDialog raw={geocoding} treeId={treeId} onClose={() => setGeocoding(null)} />
     </div>
   );
@@ -695,10 +722,10 @@ export function PlacesManageTab({ treeId }: { treeId: string }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Place</TableHead>
-                    <TableHead>Coordinates</TableHead>
-                    <TableHead>People</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead className="w-32">Actions</TableHead>
+                    <TableHead className="hidden md:table-cell">Coordinates</TableHead>
+                    <TableHead className="hidden lg:table-cell">People</TableHead>
+                    <TableHead className="hidden sm:table-cell">Source</TableHead>
+                    <TableHead className="w-auto">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
 
@@ -734,12 +761,12 @@ export function PlacesManageTab({ treeId }: { treeId: string }) {
                               <p className="text-xs text-muted-foreground">{[p.city, p.region].filter(Boolean).join(", ")}</p>
                             )}
                           </TableCell>
-                          <TableCell className="text-xs font-mono text-muted-foreground">
+                          <TableCell className="hidden md:table-cell text-xs font-mono text-muted-foreground">
                             {p.lat !== null && p.lon !== null
                               ? `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`
                               : <span className="text-amber-500">Missing</span>}
                           </TableCell>
-                          <TableCell onClick={e => e.stopPropagation()}>
+                          <TableCell className="hidden lg:table-cell" onClick={e => e.stopPropagation()}>
                             {p.persons.length > 0 ? (() => {
                               const expanded = expandedPersons.has(p.id);
                               const visible  = expanded ? p.persons : p.persons.slice(0, 3);
@@ -777,7 +804,7 @@ export function PlacesManageTab({ treeId }: { treeId: string }) {
                               <span className="text-xs text-muted-foreground">—</span>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden sm:table-cell">
                             <Badge variant={p.geocoder === "manual" ? "secondary" : "outline"} className="text-xs">
                               {p.geocoder === "manual" ? "Manual" : "Auto"}
                             </Badge>

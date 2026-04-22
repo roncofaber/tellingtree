@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
-import { Users, Heart, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings } from "lucide-react";
+import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake } from "lucide-react";
+import { genderColor, getFullName } from "@/lib/person";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { getTree } from "@/api/trees";
@@ -23,12 +24,6 @@ import { MediaTab }         from "@/components/tree/MediaTab";
 
 // ─── Dashboard helpers ───────────────────────────────────────────────────────
 
-function genderBadgeColor(g: string): string {
-  if (g === "male"   || g === "m") return "bg-blue-500";
-  if (g === "female" || g === "f") return "bg-rose-500";
-  if (g === "other"  || g === "o") return "bg-amber-500";
-  return "bg-slate-400";
-}
 
 function topN(items: string[], n: number): { value: string; count: number }[] {
   const counts = new Map<string, number>();
@@ -48,7 +43,6 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
   const base = `/trees/${treeSlug}`;
 
   const { data: personsData }     = useQuery({ queryKey: queryKeys.persons.stat(treeId),          queryFn: () => listPersons(treeId, 0, 1),          enabled: !!treeId });
-  const { data: relsData }        = useQuery({ queryKey: queryKeys.relationships.stat(treeId),    queryFn: () => listRelationships(treeId, 0, 1),    enabled: !!treeId });
   const { data: storiesData }     = useQuery({ queryKey: queryKeys.stories.stat(treeId),          queryFn: () => listStories(treeId, { limit: 1 }),  enabled: !!treeId });
   const { data: places }          = useQuery({ queryKey: queryKeys.places.forTree(treeId),        queryFn: () => listTreePlaces(treeId),             enabled: !!treeId });
   const { data: fullPersonsData } = useQuery({ queryKey: queryKeys.persons.full(treeId),          queryFn: () => listPersons(treeId, 0, 50000),      enabled: !!treeId });
@@ -106,13 +100,34 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
     [...(fullStoriesData?.items ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5),
     [fullStoriesData]);
 
+  const upcomingBirthdays = useMemo(() => {
+    const today = new Date();
+    const todayMD = today.getMonth() * 100 + today.getDate();
+    const thisYear = today.getFullYear();
+
+    return persons
+      .filter(p => p.birth_date)
+      .map(p => {
+        const [y, m, d] = p.birth_date!.split("-").map(Number);
+        const md = (m - 1) * 100 + d;
+        let daysAway = md - todayMD;
+        if (daysAway < 0) daysAway += 365;
+        const turnsAge = thisYear - y + (md >= todayMD ? 0 : 1);
+        const deceased = p.is_living === false;
+        return { person: p, month: m, day: d, birthYear: y, daysAway, turnsAge, deceased };
+      })
+      .filter(b => b.daysAway <= 15)
+      .sort((a, b) => a.daysAway - b.daysAway)
+      .slice(0, 8);
+  }, [persons]);
+
   const geocodedPlaces = (placeDetails ?? []).filter(p => p.lat !== null && p.lon !== null);
   const completeness   = persons.length > 0
     ? Math.round(((stats.withBirthDate + stats.withLocation) / (persons.length * 2)) * 100)
     : 0;
 
   return (
-    <div className="space-y-6 py-2">
+    <div className="space-y-5 py-2">
 
       {/* ── Stat cards ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -128,39 +143,12 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
               <div className="flex items-center gap-2 mt-2">
                 {Object.entries(stats.genders).map(([g, n]) => (
                   <span key={g} className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <span className={`w-2 h-2 rounded-full ${genderBadgeColor(g)}`} />
+                    <span className={`w-2 h-2 rounded-full ${genderColor(g)}`} />
                     {n}
                   </span>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Relationships */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/people`, { replace: true })}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-muted-foreground">Relationships</span>
-              <Heart className="h-4 w-4 text-muted-foreground/50" />
-            </div>
-            <p className="text-3xl font-bold tabular-nums">{relsData?.total ?? "—"}</p>
-            {Object.keys(stats.relTypes).length > 0 && (
-              <p className="text-xs text-muted-foreground mt-2 leading-tight">
-                {Object.entries(stats.relTypes).map(([t, n]) => `${n} ${t}`).join(" · ")}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Stories */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/stories`, { replace: true })}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-muted-foreground">Stories</span>
-              <BookOpen className="h-4 w-4 text-muted-foreground/50" />
-            </div>
-            <p className="text-3xl font-bold tabular-nums">{storiesData?.total ?? "—"}</p>
           </CardContent>
         </Card>
 
@@ -179,7 +167,31 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
             )}
           </CardContent>
         </Card>
+
+        {/* Stories */}
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/stories`, { replace: true })}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-muted-foreground">Stories</span>
+              <BookOpen className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="text-3xl font-bold tabular-nums">{storiesData?.total ?? "—"}</p>
+          </CardContent>
+        </Card>
+
+        {/* Media */}
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/media`, { replace: true })}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-muted-foreground">Media</span>
+              <ImageIcon className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="text-sm text-muted-foreground mt-2">Photos, documents, audio</p>
+          </CardContent>
+        </Card>
       </div>
+
+      <div className="border-t" />
 
       {/* ── Map + Insights ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -296,6 +308,42 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
         </Card>
       </div>
 
+      <div className="border-t" />
+
+      {/* ── Upcoming birthdays ───────────────────────────────────────────── */}
+      {upcomingBirthdays.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Upcoming birthdays</h2>
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {upcomingBirthdays.map(({ person: p, month, day, turnsAge, daysAway, deceased }) => {
+              const name = getFullName(p);
+              const ini = ((p.given_name?.[0] ?? "") + (p.family_name?.[0] ?? "")).toUpperCase() || "?";
+              const avatarBg = genderColor(p.gender);
+              const monthName = new Date(2000, month - 1, 1).toLocaleString(undefined, { month: "short" });
+              const isToday = daysAway === 0;
+              return (
+                <Link key={p.id} to={`${base}/people/${p.id}`}
+                  className={`flex flex-col items-center gap-1.5 rounded-lg border px-4 py-3 min-w-[100px] text-center transition-colors hover:border-primary/40 hover:bg-muted/50 shrink-0 ${isToday ? "border-primary/30 bg-primary/5" : ""}`}
+                >
+                  <div className={`${avatarBg} w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white`}>{ini}</div>
+                  <p className="text-xs font-medium truncate max-w-[90px]">{name}</p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Cake className="h-3 w-3" />
+                    <span>{monthName} {day}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {isToday ? <span className="text-primary font-medium">Today!</span> : `in ${daysAway} day${daysAway !== 1 ? "s" : ""}`}
+                    {turnsAge > 0 && ` · ${deceased ? "would turn" : "turns"} ${turnsAge}`}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="border-t" />
+
       {/* ── Recent activity ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Recent people */}
@@ -310,7 +358,7 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
                   const ini     = ((p.given_name?.[0] ?? "") + (p.family_name?.[0] ?? "")).toUpperCase() || "?";
                   const bdate   = formatFlexDate(p.birth_date, p.birth_date_qualifier, p.birth_date_2, p.birth_date_original);
                   const added   = new Date(p.created_at).toLocaleDateString();
-                  const avatarBg = genderBadgeColor(p.gender ?? "unknown");
+                  const avatarBg = genderColor(p.gender ?? "unknown");
                   return (
                     <Link key={p.id} to={`${base}/people/${p.id}`}
                       className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted transition-colors group"

@@ -47,7 +47,16 @@ def _parse_address(r: dict) -> GeoResult:
         or addr.get("district")
         or (village if (town or city_name) else None)
     )
-    city = city_name or town or village or addr.get("municipality")
+    municipality = addr.get("municipality")
+    city = city_name or town or village or municipality
+
+    # If the result's own name is more specific than the municipality,
+    # treat the result name as a sub-locality (e.g., Novazzano within Mendrisio)
+    result_name = r.get("name")
+    if result_name and city == municipality and result_name != municipality:
+        sub = result_name
+        if not city:
+            city = municipality
     region = addr.get("state") or addr.get("county")
     country = addr.get("country")
     country_code = addr.get("country_code", "").upper() or None

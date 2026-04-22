@@ -67,6 +67,7 @@ import {
   Undo2,
   Redo2,
   Upload,
+  ImageIcon,
 } from "lucide-react";
 
 type BlockType = "paragraph" | "h2" | "h3" | "quote" | "ul" | "ol";
@@ -105,7 +106,7 @@ function Divider() {
   return <div className="w-px h-5 bg-border mx-0.5" />;
 }
 
-export function ToolbarPlugin() {
+export function ToolbarPlugin({ treeId }: { treeId?: string }) {
   const [editor] = useLexicalComposerContext();
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
@@ -116,6 +117,7 @@ export function ToolbarPlugin() {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const imgRef = useRef<HTMLInputElement>(null);
 
   const updateToolbar = useCallback(() => {
     const selection = $getSelection();
@@ -354,6 +356,33 @@ export function ToolbarPlugin() {
       >
         <Minus className={sz} />
       </ToolbarButton>
+      {treeId && (
+        <>
+          <input
+            ref={imgRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file || !treeId) return;
+              try {
+                const { uploadMedia } = await import("@/api/media");
+                const { INSERT_IMAGE_COMMAND } = await import("./ImagePlugin");
+                const media = await uploadMedia(treeId, file);
+                editor.dispatchCommand(INSERT_IMAGE_COMMAND, { mediaId: media.id, treeId, altText: file.name });
+              } catch {
+                const { toast } = await import("sonner");
+                toast.error("Failed to upload image");
+              }
+              e.target.value = "";
+            }}
+          />
+          <ToolbarButton onClick={() => imgRef.current?.click()} title="Insert image">
+            <ImageIcon className={sz} />
+          </ToolbarButton>
+        </>
+      )}
 
       <Divider />
 

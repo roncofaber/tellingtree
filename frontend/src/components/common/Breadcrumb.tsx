@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 
 interface BreadcrumbItem {
   label: string;
@@ -7,8 +7,17 @@ interface BreadcrumbItem {
 }
 
 export function Breadcrumb({ items }: { items: BreadcrumbItem[] }) {
+  const navigate = useNavigate();
+
   return (
     <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <button
+        onClick={() => navigate(-1)}
+        className="flex items-center justify-center h-6 w-6 rounded-md hover:bg-muted transition-colors shrink-0 mr-0.5"
+        title="Go back"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+      </button>
       {items.map((item, i) => (
         <span key={i} className="flex items-center gap-1.5 min-w-0">
           {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-50" />}

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listStories, createStory, deleteStory } from "@/api/stories";
 import { listPersons } from "@/api/persons";
+import { listRelationships } from "@/api/relationships";
 import { listTags } from "@/api/tags";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { StoryEditor, extractMentionPersonIds } from "@/components/editor/StoryEditor";
 import { LocationInput } from "@/components/common/LocationInput";
+import { loadGraphSettings } from "@/lib/graphSettings";
 import type { Story } from "@/types/story";
 
 type SortKey = "event-asc" | "event-desc" | "title-asc" | "added-desc";
@@ -53,7 +55,14 @@ export function StoriesTab({ treeId }: { treeId: string }) {
     queryFn: () => listPersons(treeId, 0, 50000),
   });
 
+  const { data: relsData } = useQuery({
+    queryKey: queryKeys.relationships.full(treeId),
+    queryFn: () => listRelationships(treeId, 0, 50000),
+  });
+
   const persons = personsData?.items ?? [];
+  const relationships = relsData?.items ?? [];
+  const myPersonId = loadGraphSettings(treeId).myPersonId;
 
   const personMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -168,6 +177,9 @@ export function StoriesTab({ treeId }: { treeId: string }) {
                   initialContent={null}
                   onChange={setEditorContent}
                   persons={persons}
+                  treeId={treeId}
+                  relationships={relationships}
+                  myPersonId={myPersonId}
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">

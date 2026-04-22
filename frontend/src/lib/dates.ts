@@ -17,7 +17,9 @@ export function formatFlexDate(
 
   const year = (iso: string) => iso.slice(0, 4);
   const full = (iso: string) => {
-    const d = new Date(iso);
+    const parts = iso.split("-");
+    if (parts.length !== 3) return iso;
+    const d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
     return isNaN(d.getTime())
       ? iso
       : d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });

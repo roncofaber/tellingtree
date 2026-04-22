@@ -34,9 +34,12 @@ import {
   type EditorState,
 } from "lexical";
 import { MentionNode } from "./nodes/MentionNode";
+import { ImageNode } from "./nodes/ImageNode";
 import { MentionPlugin } from "./plugins/MentionPlugin";
+import { ImagePlugin } from "./plugins/ImagePlugin";
 import { ToolbarPlugin } from "./plugins/ToolbarPlugin";
 import type { Person } from "@/types/person";
+import type { Relationship } from "@/types/relationship";
 
 const STORY_TRANSFORMERS = [
   HEADING,
@@ -85,6 +88,7 @@ const EDITOR_NODES = [
   AutoLinkNode,
   HorizontalRuleNode,
   MentionNode,
+  ImageNode,
 ];
 
 function isLexicalJson(content: string): boolean {
@@ -118,12 +122,18 @@ interface StoryEditorProps {
   initialContent: string | null;
   onChange: (json: string) => void;
   persons: Person[];
+  treeId?: string;
+  relationships?: Relationship[];
+  myPersonId?: string | null;
   placeholder?: string;
 }
 
 export function StoryEditor({
   initialContent,
   onChange,
+  treeId,
+  relationships,
+  myPersonId,
   persons,
   placeholder = "Tell your story… Use @ to mention family members.",
 }: StoryEditorProps) {
@@ -153,7 +163,7 @@ export function StoryEditor({
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <div className="rounded-lg border border-input bg-background overflow-hidden">
-        <ToolbarPlugin />
+        <ToolbarPlugin treeId={treeId} />
         <div className="relative min-h-[300px] max-h-[60vh] overflow-y-auto px-4 py-3 resize-y">
           <RichTextPlugin
             contentEditable={
@@ -174,7 +184,8 @@ export function StoryEditor({
       <HorizontalRulePlugin />
       <MarkdownShortcutPlugin transformers={STORY_TRANSFORMERS} />
       <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
-      <MentionPlugin persons={persons} />
+      <MentionPlugin persons={persons} myPersonId={myPersonId} relationships={relationships} />
+      {treeId && <ImagePlugin treeId={treeId} />}
     </LexicalComposer>
   );
 }
@@ -193,6 +204,24 @@ export function extractMentionPersonIds(jsonString: string): string[] {
       if (Array.isArray(children)) {
         children.forEach(walk);
       }
+    }
+    if (state.root) walk(state.root);
+    return [...ids];
+  } catch {
+    return [];
+  }
+}
+
+export function extractMediaIds(jsonString: string): string[] {
+  try {
+    const state = JSON.parse(jsonString);
+    const ids = new Set<string>();
+    function walk(node: Record<string, unknown>) {
+      if (node.type === "image" && typeof node.mediaId === "string") {
+        ids.add(node.mediaId as string);
+      }
+      const children = node.children as Record<string, unknown>[] | undefined;
+      if (Array.isArray(children)) children.forEach(walk);
     }
     if (state.root) walk(state.root);
     return [...ids];

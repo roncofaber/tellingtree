@@ -8,6 +8,7 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { MapPin, Calendar, User } from "lucide-react";
 import { isLexicalJson, EDITOR_THEME, EDITOR_NODES } from "./StoryEditor";
 import { formatFlexDate } from "@/lib/dates";
+import { getFullName, getInitials, genderColor } from "@/lib/person";
 import type { Person } from "@/types/person";
 import type { Place } from "@/types/place";
 
@@ -15,13 +16,6 @@ interface HoverInfo {
   person: Person;
   x: number;
   y: number;
-}
-
-function genderAccent(g: string): string {
-  if (g === "male" || g === "m") return "bg-blue-500";
-  if (g === "female" || g === "f") return "bg-rose-500";
-  if (g === "other" || g === "o") return "bg-amber-500";
-  return "bg-slate-400";
 }
 
 function PersonHoverCard({
@@ -33,8 +27,8 @@ function PersonHoverCard({
   onEnter,
   onLeave,
 }: HoverInfo & { treeSlug: string; places?: Place[]; onEnter: () => void; onLeave: () => void }) {
-  const name = [person.given_name, person.family_name].filter(Boolean).join(" ") || "Unnamed";
-  const initials = ((person.given_name?.[0] ?? "") + (person.family_name?.[0] ?? "")).toUpperCase() || "?";
+  const name = getFullName(person);
+  const initials = getInitials(person);
   const birthFmt = formatFlexDate(person.birth_date, person.birth_date_qualifier, person.birth_date_2, person.birth_date_original);
   const deathFmt = formatFlexDate(person.death_date, person.death_date_qualifier, person.death_date_2, person.death_date_original);
   const dates = birthFmt && deathFmt
@@ -48,7 +42,7 @@ function PersonHoverCard({
     ? places.find(p => p.id === person.birth_place_id)
     : null;
   const location = geocodedPlace?.display_name ?? person.birth_location;
-  const accent = genderAccent(person.gender ?? "unknown");
+  const accent = genderColor(person.gender ?? "unknown");
 
   const cardWidth = 260;
   const clampedX = Math.min(x, window.innerWidth - cardWidth - 16);

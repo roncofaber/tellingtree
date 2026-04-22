@@ -27,6 +27,7 @@ export interface GraphLayout {
 
 export interface GraphSettings {
   defaultRootPersonId: string | null;
+  myPersonId?: string | null;
   maxDepth: number; // 0 = unlimited
   style?: Partial<GraphStyle>;
   layout?: Partial<GraphLayout>;
@@ -97,4 +98,52 @@ export function accentForGender(g: string, style: GraphStyle): string {
   if (g === "male"   || g === "m") return style.maleAccent;
   if (g === "other"  || g === "o") return style.otherAccent;
   return style.unknownAccent;
+}
+
+export function genderIcon(g: string): string {
+  if (g === "female" || g === "f") return "/female_icon.svg";
+  if (g === "male"   || g === "m") return "/male_icon.svg";
+  if (g === "other"  || g === "o") return "/other_icon.svg";
+  return "/unknown_icon.svg";
+}
+
+export function buildCardHtml(
+  dd: Record<string, string>,
+  style: GraphStyle,
+  opts?: { isMain?: boolean; isMe?: boolean },
+): string {
+  const firstName = dd["first name"] || "";
+  const lastName = dd["last name"] || "";
+  const nickname = dd.nickname || "";
+  const birthday = dd.birthday || "";
+  const g = dd._gender ?? (dd.gender === "F" ? "female" : dd.gender === "M" ? "male" : "unknown");
+  const accent = accentForGender(g, style);
+  const icon = genderIcon(g);
+  const isMain = opts?.isMain ?? false;
+  const isMe = opts?.isMe ?? false;
+  const mainShadow = isMain ? `box-shadow:0 0 0 3px var(--color-primary), 0 0 14px 5px color-mix(in srgb, var(--color-primary) 40%, transparent);` : "";
+  const star = isMe ? `<span style="position:absolute;top:2px;right:4px;font-size:11px;line-height:1;" title="You">&#9733;</span>` : "";
+
+  if (!firstName && !lastName) {
+    return `<div class="tt-card" style="position:relative;background:${style.cardBg};border-left:4px solid ${accent};${mainShadow}">
+      ${star}
+      <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;">
+        <img src="${icon}" style="width:16px;height:16px;opacity:0.5;object-fit:contain;" />
+        <span style="font-size:12px;color:${style.mutedColor};font-style:italic;">Unnamed</span>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="tt-card" style="position:relative;background:${style.cardBg};border-left:4px solid ${accent};${mainShadow}">
+    ${star}
+    <div style="padding:7px 10px 6px 10px;display:flex;gap:7px;min-width:0;">
+      <img src="${icon}" style="width:18px;height:18px;opacity:0.45;object-fit:contain;flex-shrink:0;margin-top:1px;" />
+      <div style="min-width:0;overflow:hidden;max-width:130px;">
+        ${firstName ? `<div style="font-size:12px;font-weight:500;color:${style.textColor};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${firstName}</div>` : ""}
+        ${lastName ? `<div style="font-size:10.5px;font-weight:800;color:${accent};letter-spacing:0.06em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lastName.toUpperCase()}</div>` : ""}
+        ${nickname ? `<div style="font-size:9.5px;font-style:italic;color:${style.mutedColor};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${nickname}"</div>` : ""}
+        ${birthday ? `<div style="font-size:9px;color:${style.mutedColor};font-variant-numeric:tabular-nums;letter-spacing:0.02em;line-height:1.4;margin-top:1px;">${birthday}</div>` : ""}
+      </div>
+    </div>
+  </div>`;
 }

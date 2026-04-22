@@ -8,7 +8,7 @@ import { resetTreeGeocoding } from "@/api/places";
 import { listPersons } from "@/api/persons";
 import { importGedcomStreaming, type ImportResult, type ImportProgress } from "@/api/imports";
 import { queryKeys } from "@/lib/queryKeys";
-import { loadGraphSettings, saveGraphSettings, getResolvedStyle, getResolvedLayout, applyGraphStyle, accentForGender, type GraphStyle, type GraphLayout } from "@/lib/graphSettings";
+import { loadGraphSettings, saveGraphSettings, getResolvedStyle, getResolvedLayout, applyGraphStyle, buildCardHtml, type GraphStyle, type GraphLayout } from "@/lib/graphSettings";
 import * as f3 from "family-chart";
 import "family-chart/styles/family-chart.css";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,13 +23,6 @@ import { MembersTab } from "@/components/tree/MembersTab";
 import { TrashTab } from "@/components/tree/TrashTab";
 import { PlacesManageTab } from "@/components/tree/PlacesManageTab";
 import { RelationshipsTab } from "@/components/tree/RelationshipsTab";
-
-function previewIcon(g: string): string {
-  if (g === "female" || g === "f") return "/female_icon.svg";
-  if (g === "male"   || g === "m") return "/male_icon.svg";
-  if (g === "other"  || g === "o") return "/other_icon.svg";
-  return "/unknown_icon.svg";
-}
 
 const PREVIEW_DATA: f3.Data = [
   { id: "gf", data: { gender: "M", _gender: "male", "first name": "James", "last name": "Smith", nickname: "", birthday: "1935–2010" }, rels: { spouses: ["gm"], children: ["dad", "aunt"], parents: [] } },
@@ -82,25 +75,8 @@ function GraphPreview({ style, layout }: { style: GraphStyle; layout: GraphLayou
         card.setStyle("rect");
         card.setCardInnerHtmlCreator((d: f3.TreeDatum) => {
           const dd = d.data.data as Record<string, string>;
-          const firstName = dd["first name"] || "";
-          const lastName = dd["last name"] || "";
-          const nickname = dd.nickname || "";
-          const birthday = dd.birthday || "";
-          const g = dd._gender ?? (dd.gender === "F" ? "female" : dd.gender === "M" ? "male" : "unknown");
-          const accent = accentForGender(g, style);
-          const icon = previewIcon(g);
           const isMain = !!(d.data as { main?: boolean }).main;
-          return `<div class="tt-card" style="background:${style.cardBg};border-left:4px solid ${accent};${isMain ? `box-shadow:0 0 0 2px ${accent}40;` : ""}">
-            <div style="padding:7px 10px 6px 10px;display:flex;gap:7px;min-width:0;">
-              <img src="${icon}" style="width:18px;height:18px;opacity:0.45;object-fit:contain;flex-shrink:0;margin-top:1px;" />
-              <div style="min-width:0;overflow:hidden;max-width:130px;">
-                ${firstName ? `<div style="font-size:12px;font-weight:500;color:${style.textColor};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${firstName}</div>` : ""}
-                ${lastName ? `<div style="font-size:10.5px;font-weight:800;color:${accent};letter-spacing:0.06em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lastName.toUpperCase()}</div>` : ""}
-                ${nickname ? `<div style="font-size:9.5px;font-style:italic;color:${style.mutedColor};line-height:1.3;">"${nickname}"</div>` : ""}
-                ${birthday ? `<div style="font-size:9px;color:${style.mutedColor};font-variant-numeric:tabular-nums;line-height:1.4;margin-top:1px;">${birthday}</div>` : ""}
-              </div>
-            </div>
-          </div>`;
+          return buildCardHtml(dd, style, { isMain });
         });
         chart.updateMainId("dad");
         chart.updateTree({ initial: true, tree_position: "fit" });
@@ -242,7 +218,7 @@ export function TreeManagePage() {
   if (isLoading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-4xl">
       {/* Header */}
       <div className="space-y-1">
         <Breadcrumb items={[
@@ -254,7 +230,7 @@ export function TreeManagePage() {
       </div>
 
       <Tabs defaultValue="general">
-        <TabsList className="w-full justify-start">
+        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
           <TabsTrigger value="general" className="shrink-0">General</TabsTrigger>
           <TabsTrigger value="graph" className="shrink-0">Graph</TabsTrigger>
           <TabsTrigger value="places" className="shrink-0">Places</TabsTrigger>
@@ -285,13 +261,94 @@ export function TreeManagePage() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-1 text-sm">
+                <div className="space-y-2 text-sm">
                   <p><span className="text-muted-foreground">Name:</span> {tree?.name}</p>
                   {tree?.description && <p><span className="text-muted-foreground">Description:</span> {tree.description}</p>}
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="text-muted-foreground">Visibility:</span>
+                    <span className={`text-xs px-2.5 py-1 rounded-md border ${tree?.is_public ? "bg-emerald-500/10 text-emerald-600 border-emerald-200" : "bg-muted text-muted-foreground border-border"}`}>
+                      {tree?.is_public ? "Public" : "Private"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{tree?.is_public ? "Anyone can view this tree" : "Only members can view"}</span>
+                  </div>
+                  <div className="rounded-lg border bg-muted/50 p-3 mt-2">
+                    <p className="text-xs text-muted-foreground mb-2">
+                      {tree?.is_public
+                        ? "Making this tree private will prevent anyone without a membership from viewing it."
+                        : "Making this tree public will allow anyone with the link to view it (read-only)."}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant={tree?.is_public ? "outline" : "default"}
+                      onClick={async () => {
+                        await updateTree(treeId!, { is_public: !tree?.is_public });
+                        queryClient.invalidateQueries({ queryKey: queryKeys.trees.detail(treeSlug!) });
+                        toast.success(tree?.is_public ? "Tree is now private" : "Tree is now public");
+                      }}
+                    >
+                      {tree?.is_public ? "Make private" : "Make public"}
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {/* You in this tree */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">You in this tree</CardTitle></CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-3">Select which person represents you. This will be used as the default center in the graph.</p>
+              <div className="space-y-2">
+                <Input
+                  placeholder="Search by name…"
+                  value={rootSearch}
+                  onChange={e => setRootSearch(e.target.value)}
+                  className="h-8"
+                />
+                {rootSearch && (
+                  <div className="border rounded-md max-h-40 overflow-y-auto">
+                    {(personsData?.items ?? [])
+                      .filter(p => [p.given_name, p.family_name].join(" ").toLowerCase().includes(rootSearch.toLowerCase()))
+                      .slice(0, 8)
+                      .map(p => {
+                        const pName = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
+                        const year = p.birth_date?.slice(0, 4);
+                        const isSelected = graphSettings.myPersonId === p.id;
+                        return (
+                          <button key={p.id}
+                            className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                            onClick={() => {
+                              const u = { ...graphSettings, myPersonId: p.id, defaultRootPersonId: p.id };
+                              setGraphSettings(u); saveGraphSettings(treeId!, u);
+                              setRootSearch("");
+                              toast.success(`You are now ${pName}`);
+                            }}>
+                            <span className="font-medium truncate">{pName}</span>
+                            {year && <span className="text-xs text-muted-foreground ml-auto">b. {year}</span>}
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
+                {graphSettings.myPersonId && (() => {
+                  const me = personsData?.items.find(p => p.id === graphSettings.myPersonId);
+                  const meName = me ? [me.given_name, me.family_name].filter(Boolean).join(" ") : "—";
+                  return (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Currently set to:</span>
+                      <span className="font-medium">{meName}</span>
+                      <button className="text-xs text-primary hover:underline" onClick={() => {
+                        const u = { ...graphSettings, myPersonId: null };
+                        setGraphSettings(u); saveGraphSettings(treeId!, u);
+                      }}>Clear</button>
+                    </div>
+                  );
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader><CardTitle className="text-base">Members</CardTitle></CardHeader>
             <CardContent><MembersTab treeId={treeId!} /></CardContent>
@@ -339,10 +396,10 @@ export function TreeManagePage() {
                         )}
                         {graphSettings.defaultRootPersonId && (
                           <div className="flex items-center gap-1">
-                            <span className="text-[10px] text-muted-foreground truncate">
+                            <span className="text-xs text-muted-foreground truncate">
                               {(() => { const p = personsData?.items.find(p => p.id === graphSettings.defaultRootPersonId); return p ? [p.given_name, p.family_name].filter(Boolean).join(" ") : "—"; })()}
                             </span>
-                            <button className="text-[10px] text-primary hover:underline" onClick={() => { const u = { ...graphSettings, defaultRootPersonId: null }; setGraphSettings(u); saveGraphSettings(treeId!, u); }}>clear</button>
+                            <button className="text-xs text-primary hover:underline" onClick={() => { const u = { ...graphSettings, defaultRootPersonId: null }; setGraphSettings(u); saveGraphSettings(treeId!, u); }}>clear</button>
                           </div>
                         )}
                       </div>
@@ -360,89 +417,89 @@ export function TreeManagePage() {
                     </div>
                   </div>
 
-                  <hr className="border-slate-100" />
+                  <hr className="border-border" />
 
                   {/* Layout & animation */}
                   <div className="space-y-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Layout</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="space-y-0.5">
-                        <Label className="text-[10px]">Speed</Label>
+                        <Label className="text-xs">Speed</Label>
                         <input type="range" min="200" max="1500" step="100" value={layout.transitionTime}
                           onChange={e => updateLayout({ transitionTime: parseInt(e.target.value) })} className="w-full" />
-                        <span className="text-[10px] text-muted-foreground">{layout.transitionTime}ms</span>
+                        <span className="text-xs text-muted-foreground">{layout.transitionTime}ms</span>
                       </div>
                       <div className="space-y-0.5">
-                        <Label className="text-[10px]">H-spacing</Label>
+                        <Label className="text-xs">H-spacing</Label>
                         <input type="range" min="140" max="500" step="20" value={layout.cardXSpacing}
                           onChange={e => updateLayout({ cardXSpacing: parseInt(e.target.value) })} className="w-full" />
-                        <span className="text-[10px] text-muted-foreground">{layout.cardXSpacing < 180 ? `overlap ${180 - layout.cardXSpacing}px` : `${layout.cardXSpacing - 180}px gap`}</span>
+                        <span className="text-xs text-muted-foreground">{layout.cardXSpacing < 180 ? `overlap ${180 - layout.cardXSpacing}px` : `${layout.cardXSpacing - 180}px gap`}</span>
                       </div>
                       <div className="space-y-0.5">
-                        <Label className="text-[10px]">V-spacing</Label>
+                        <Label className="text-xs">V-spacing</Label>
                         <input type="range" min="100" max="300" step="25" value={layout.cardYSpacing}
                           onChange={e => updateLayout({ cardYSpacing: parseInt(e.target.value) })} className="w-full" />
-                        <span className="text-[10px] text-muted-foreground">{layout.cardYSpacing}px</span>
+                        <span className="text-xs text-muted-foreground">{layout.cardYSpacing}px</span>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-3">
-                      <label className="flex items-center gap-1.5 text-[11px]">
+                      <label className="flex items-center gap-1.5 text-xs">
                         <input type="checkbox" checked={layout.showMiniTree} onChange={e => updateLayout({ showMiniTree: e.target.checked })} />
                         Expand icons
                       </label>
-                      <label className="flex items-center gap-1.5 text-[11px]">
+                      <label className="flex items-center gap-1.5 text-xs">
                         <input type="checkbox" checked={layout.showPathToMain} onChange={e => updateLayout({ showPathToMain: e.target.checked })} />
                         Path highlight
                       </label>
-                      <label className="flex items-center gap-1.5 text-[11px]">
+                      <label className="flex items-center gap-1.5 text-xs">
                         <input type="checkbox" checked={layout.showSiblings} onChange={e => updateLayout({ showSiblings: e.target.checked })} />
                         Siblings
                       </label>
                     </div>
                   </div>
 
-                  <hr className="border-slate-100" />
+                  <hr className="border-border" />
 
                   {/* Colors */}
                   <div className="space-y-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Colors</h3>
                     <div className="space-y-2">
                       <div className="flex flex-wrap gap-3">
-                        <span className="text-[10px] text-muted-foreground w-full">Card fill colors</span>
+                        <span className="text-xs text-muted-foreground w-full">Card fill colors</span>
                         {([
                           ["Male", "maleColor"], ["Female", "femaleColor"], ["Other", "otherColor"], ["Unknown", "unknownColor"],
                         ] as [string, keyof GraphStyle][]).map(([label, key]) => (
                           <div key={key} className="flex items-center gap-1.5">
                             <input type="color" value={rgbToHex(style[key] as string)} onChange={e => updateStyle({ [key]: e.target.value })} className="w-6 h-6 rounded border cursor-pointer" />
-                            <span className="text-[10px] text-muted-foreground">{label}</span>
+                            <span className="text-xs text-muted-foreground">{label}</span>
                           </div>
                         ))}
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <span className="text-[10px] text-muted-foreground w-full">Accent colors (last name, stripe)</span>
+                        <span className="text-xs text-muted-foreground w-full">Accent colors (last name, stripe)</span>
                         {([
                           ["Male", "maleAccent"], ["Female", "femaleAccent"], ["Other", "otherAccent"], ["Unknown", "unknownAccent"],
                         ] as [string, keyof GraphStyle][]).map(([label, key]) => (
                           <div key={key} className="flex items-center gap-1.5">
                             <input type="color" value={rgbToHex(style[key] as string)} onChange={e => updateStyle({ [key]: e.target.value })} className="w-6 h-6 rounded border cursor-pointer" />
-                            <span className="text-[10px] text-muted-foreground">{label}</span>
+                            <span className="text-xs text-muted-foreground">{label}</span>
                           </div>
                         ))}
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <span className="text-[10px] text-muted-foreground w-full">Graph</span>
+                        <span className="text-xs text-muted-foreground w-full">Graph</span>
                         {([
                           ["Lines", "linkColor"], ["Path highlight", "pathAccent"], ["Background", "bgColor"], ["Card bg", "cardBg"], ["Text", "textColor"], ["Muted", "mutedColor"],
                         ] as [string, keyof GraphStyle][]).map(([label, key]) => (
                           <div key={key} className="flex items-center gap-1.5">
                             <input type="color" value={rgbToHex(style[key] as string)} onChange={e => updateStyle({ [key]: e.target.value })} className="w-6 h-6 rounded border cursor-pointer" />
-                            <span className="text-[10px] text-muted-foreground">{label}</span>
+                            <span className="text-xs text-muted-foreground">{label}</span>
                           </div>
                         ))}
                         <div className="flex items-center gap-1.5">
                           <input type="range" min="0.5" max="4" step="0.5" value={style.linkWidth}
                             onChange={e => updateStyle({ linkWidth: parseFloat(e.target.value) })} className="w-16" />
-                          <span className="text-[10px] text-muted-foreground">Lines {style.linkWidth}px</span>
+                          <span className="text-xs text-muted-foreground">Lines {style.linkWidth}px</span>
                         </div>
                       </div>
                     </div>
@@ -469,7 +526,28 @@ export function TreeManagePage() {
         </TabsContent>
 
         {/* ── Data ── */}
-        <TabsContent value="places" className="mt-4">
+        <TabsContent value="places" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Reset geocoding</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Clear all place links from persons so you can re-geocode everything from scratch.
+              </p>
+              {resetResult !== null && (
+                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+                  Cleared {resetResult} place link{resetResult !== 1 ? "s" : ""}.
+                </p>
+              )}
+              {confirmReset ? (
+                <div className="flex gap-2">
+                  <Button variant="destructive" size="sm" disabled={resetting} onClick={handleResetGeocoding}>{resetting ? "Resetting…" : "Confirm reset"}</Button>
+                  <Button variant="outline" size="sm" onClick={() => setConfirmReset(false)}>Cancel</Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => { setResetResult(null); setConfirmReset(true); }}>Reset all geocoding…</Button>
+              )}
+            </CardContent>
+          </Card>
           <PlacesManageTab treeId={treeId!} />
         </TabsContent>
 
@@ -504,27 +582,6 @@ export function TreeManagePage() {
                   } catch (e) { toast.error(e instanceof Error ? e.message : "Export failed"); }
                 }}>Export .ged</Button>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-base">Geocoding</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Clear all place links so you can re-geocode from the Places tab.
-              </p>
-              {resetResult !== null && (
-                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
-                  Cleared {resetResult} place link{resetResult !== 1 ? "s" : ""}.
-                </p>
-              )}
-              {confirmReset ? (
-                <div className="flex gap-2">
-                  <Button variant="destructive" size="sm" disabled={resetting} onClick={handleResetGeocoding}>{resetting ? "Resetting…" : "Confirm"}</Button>
-                  <Button variant="outline" size="sm" onClick={() => setConfirmReset(false)}>Cancel</Button>
-                </div>
-              ) : (
-                <Button variant="outline" size="sm" onClick={() => { setResetResult(null); setConfirmReset(true); }}>Reset geocoding…</Button>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
