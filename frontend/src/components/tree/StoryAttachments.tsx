@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listMedia, uploadMedia, deleteMedia, fetchMediaBlob } from "@/api/media";
 import { queryKeys } from "@/lib/queryKeys";
-import { AuthImage } from "@/components/common/AuthImage";
 import { Button } from "@/components/ui/button";
 import { FileText, Music, Video, Paperclip, Download, Trash2, Upload } from "lucide-react";
 import type { Media } from "@/types/media";

@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getTree } from "@/api/trees";
 import { listPersons } from "@/api/persons";
 import { listRelationships } from "@/api/relationships";
+import { listAuditLogs } from "@/api/audit";
 import { listStories } from "@/api/stories";
 import { listTreePlaces, listTreePlaceDetails } from "@/api/places";
 import { formatFlexDate } from "@/lib/dates";
@@ -48,6 +49,7 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
   const { data: fullPersonsData } = useQuery({ queryKey: queryKeys.persons.full(treeId),          queryFn: () => listPersons(treeId, 0, 50000),      enabled: !!treeId });
   const { data: fullStoriesData } = useQuery({ queryKey: queryKeys.stories.all(treeId),           queryFn: () => listStories(treeId, { limit: 20 }), enabled: !!treeId });
   const { data: fullRelsData }    = useQuery({ queryKey: queryKeys.relationships.full(treeId),    queryFn: () => listRelationships(treeId, 0, 50000),enabled: !!treeId });
+  const { data: auditLogs }      = useQuery({ queryKey: ["trees", treeId, "audit"],               queryFn: () => listAuditLogs(treeId, 10),          enabled: !!treeId });
   const { data: placeDetails }    = useQuery({ queryKey: queryKeys.places.forTreeDetails(treeId), queryFn: () => listTreePlaceDetails(treeId),       enabled: !!treeId });
 
   const persons = fullPersonsData?.items ?? [];
@@ -414,6 +416,39 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
           )}
         </div>
       </div>
+
+      {/* ── Recent activity (audit log) ────────────────────────────────── */}
+      {auditLogs && auditLogs.length > 0 && (
+        <>
+          <div className="border-t" />
+          <div className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent activity</h2>
+            <div className="space-y-1">
+              {auditLogs.map(log => {
+                const actionLabel = log.action === "create" ? "Added" : log.action === "update" ? "Updated" : log.action === "delete" ? "Deleted" : log.action === "restore" ? "Restored" : log.action;
+                const entityName = (log.details as Record<string, string> | null)?.name ?? log.entity_type;
+                const timeAgo = (() => {
+                  const diff = Date.now() - new Date(log.created_at).getTime();
+                  const mins = Math.floor(diff / 60000);
+                  if (mins < 1) return "just now";
+                  if (mins < 60) return `${mins}m ago`;
+                  const hrs = Math.floor(mins / 60);
+                  if (hrs < 24) return `${hrs}h ago`;
+                  const days = Math.floor(hrs / 24);
+                  return `${days}d ago`;
+                })();
+                return (
+                  <div key={log.id} className="flex items-center gap-2 text-xs text-muted-foreground py-0.5">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${log.action === "create" ? "bg-emerald-500" : log.action === "delete" ? "bg-destructive" : "bg-primary"}`} />
+                    <span><span className="font-medium text-foreground">{actionLabel}</span> {log.entity_type} <span className="text-foreground">{entityName}</span></span>
+                    <span className="ml-auto shrink-0">{timeAgo}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

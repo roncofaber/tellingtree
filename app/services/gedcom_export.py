@@ -15,7 +15,7 @@ _MONTH_NAMES = {
 }
 
 
-def _format_date(d: date | None, qualifier: str | None = None) -> str | None:
+def _format_date(d: date | None, qualifier: str | None = None, d2: date | None = None) -> str | None:
     if d is None:
         return None
     day = d.day
@@ -37,6 +37,9 @@ def _format_date(d: date | None, qualifier: str | None = None) -> str | None:
         return f"EST {raw}"
     if qualifier == "calculated":
         return f"CAL {raw}"
+    if qualifier == "between" and d2:
+        raw2 = f"{d2.day} {_MONTH_NAMES.get(d2.month, '')} {d2.year}"
+        return f"BET {raw} AND {raw2}"
     return raw
 
 
@@ -162,6 +165,8 @@ def export_gedcom(db: Session, tree_id: uuid.UUID) -> str:
             lines.append(f"2 SURN {p.family_name.upper()}")
         if p.nickname:
             lines.append(f"2 NICK {p.nickname}")
+        if p.maiden_name:
+            lines.append(f"2 _MARNM {p.maiden_name}")
 
         # SEX
         sex = "M" if p.gender == "male" else "F" if p.gender == "female" else "U"
@@ -170,7 +175,7 @@ def export_gedcom(db: Session, tree_id: uuid.UUID) -> str:
         # BIRT
         if p.birth_date or p.birth_location:
             lines.append("1 BIRT")
-            bd = _format_date(p.birth_date, p.birth_date_qualifier)
+            bd = _format_date(p.birth_date, p.birth_date_qualifier, p.birth_date_2)
             if bd:
                 lines.append(f"2 DATE {bd}")
             if p.birth_location:
@@ -179,7 +184,7 @@ def export_gedcom(db: Session, tree_id: uuid.UUID) -> str:
         # DEAT
         if p.death_date or p.death_location or p.is_living is False:
             lines.append("1 DEAT")
-            dd = _format_date(p.death_date, p.death_date_qualifier)
+            dd = _format_date(p.death_date, p.death_date_qualifier, p.death_date_2)
             if dd:
                 lines.append(f"2 DATE {dd}")
             if p.death_location:

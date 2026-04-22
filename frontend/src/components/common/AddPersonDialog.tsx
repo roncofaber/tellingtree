@@ -98,6 +98,27 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
 
   const persons = personsData?.items ?? [];
 
+  const duplicateWarning = useMemo(() => {
+    if (mode !== "create") return null;
+    const gn = givenName.trim().toLowerCase();
+    const fn = familyName.trim().toLowerCase();
+    if (!gn && !fn) return null;
+    const matches = persons.filter(p => {
+      const pg = (p.given_name ?? "").toLowerCase();
+      const pf = (p.family_name ?? "").toLowerCase();
+      if (gn && fn) return pg === gn && pf === fn;
+      if (gn) return pg === gn && pf === fn;
+      return pf === fn;
+    });
+    if (matches.length === 0) return null;
+    const names = matches.slice(0, 3).map(p => {
+      const name = [p.given_name, p.family_name].filter(Boolean).join(" ");
+      const year = p.birth_date?.slice(0, 4);
+      return year ? `${name} (b. ${year})` : name;
+    });
+    return `Similar person${matches.length > 1 ? "s" : ""} already in this tree: ${names.join(", ")}${matches.length > 3 ? ` and ${matches.length - 3} more` : ""}`;
+  }, [mode, givenName, familyName, persons]);
+
   const filteredPersons = useMemo(() => {
     const q = linkSearch.trim().toLowerCase();
     if (!q) return persons.slice(0, 10);
@@ -291,6 +312,7 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
                   <div className="space-y-1"><Label className="text-xs">Nickname</Label><Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder='"Bud"' /></div>
                 </div>
                 {submitted && !hasName && <p className="text-xs text-destructive">At least a given name or family name is required.</p>}
+                {duplicateWarning && <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">{duplicateWarning}</p>}
               </fieldset>
 
               <fieldset className="space-y-2">

@@ -107,54 +107,6 @@ function buildPedigreeData(
   };
 }
 
-function expandWithSiblings(
-  persons: Person[],
-  relationships: Relationship[],
-  rootId: string,
-  maxDepth: number,
-): { persons: Person[]; relationships: Relationship[] } {
-  const { parentOf, childOf, spouseOf } = indexRelationships(relationships);
-
-  const included = new Set<string>();
-  const queue: { id: string; depth: number }[] = [{ id: rootId, depth: 0 }];
-  const visited = new Set<string>();
-
-  while (queue.length > 0) {
-    const { id, depth } = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
-    included.add(id);
-
-    // Include spouses (don't count as depth increase)
-    for (const sid of spouseOf.get(id) ?? []) included.add(sid);
-
-    if (depth >= maxDepth) continue;
-
-    // Walk parents
-    for (const pid of parentOf.get(id) ?? []) {
-      if (!visited.has(pid)) queue.push({ id: pid, depth: depth + 1 });
-      // Include siblings (other children of this parent) + their spouses
-      for (const sibId of childOf.get(pid) ?? []) {
-        included.add(sibId);
-        for (const spId of spouseOf.get(sibId) ?? []) included.add(spId);
-      }
-    }
-
-    // Walk children
-    for (const cid of childOf.get(id) ?? []) {
-      if (!visited.has(cid)) queue.push({ id: cid, depth: depth + 1 });
-    }
-  }
-
-  const personMap = new Map(persons.map(p => [p.id, p]));
-  return {
-    persons: [...included].map(id => personMap.get(id)).filter(Boolean) as Person[],
-    relationships: relationships.filter(r =>
-      included.has(r.person_a_id) && included.has(r.person_b_id)
-    ),
-  };
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 type RelGroup = "parents" | "spouses" | "partners" | "children" | "other";
@@ -705,8 +657,8 @@ export function GraphTab({ treeId }: { treeId: string }) {
     setDepth(d);
     const chart = chartRef.current;
     if (chart) {
-      chart.setAncestryDepth(d || undefined);
-      chart.setProgenyDepth(d || undefined);
+      chart.setAncestryDepth(d || 999);
+      chart.setProgenyDepth(d || 999);
       try { chart.updateTree({ tree_position: "fit" }); } catch { /* */ }
     }
     saveGraphSettings(treeId, { ...loadGraphSettings(treeId), maxDepth: d });

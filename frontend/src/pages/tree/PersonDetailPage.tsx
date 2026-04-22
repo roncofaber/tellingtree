@@ -7,12 +7,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPerson, updatePerson, deletePerson, listPersons } from "@/api/persons";
 import { getTree } from "@/api/trees";
 import { getPlace } from "@/api/places";
-import { fetchMediaBlob, uploadMedia } from "@/api/media";
+import { fetchMediaBlob, uploadMedia, listMedia } from "@/api/media";
+import { AuthImage } from "@/components/common/AuthImage";
 import { listPersonRelationships, updateRelationship, deleteRelationship } from "@/api/relationships";
 import { listStories } from "@/api/stories";
 import { formatFlexDate } from "@/lib/dates";
 import { queryKeys } from "@/lib/queryKeys";
-import type { Place } from "@/types/place";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,13 +76,6 @@ function InfoPair({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
-function LocationDisplay({ geocoded, raw }: { geocoded?: Place | null; raw?: string | null }) {
-  const label = geocoded?.display_name ?? raw;
-  if (!label) return null;
-  return <p className="text-sm font-medium">{label}</p>;
-}
-
 
 // ─── Relationship grouping ────────────────────────────────────────────────────
 
@@ -174,6 +167,12 @@ export function PersonDetailPage() {
     queryKey: [...queryKeys.stories.all(treeId!), "person", personId],
     queryFn:  () => listStories(treeId!, { person_id: personId }),
     enabled:  !!treeId && !!personId,
+  });
+
+  const { data: allMedia } = useQuery({
+    queryKey: queryKeys.media.all(treeId!),
+    queryFn: () => listMedia(treeId!),
+    enabled: !!treeId,
   });
 
   const { data: birthPlace } = useQuery({
@@ -449,31 +448,71 @@ export function PersonDetailPage() {
         isPending={deleteMut.isPending}
       />
 
-      {/* Life Events */}
-      {(person.birth_date || person.birth_location || person.birth_place_id || person.death_date || person.death_location || person.death_place_id) && (
-        <SectionCard title="Life Events">
-          <div className="space-y-4">
-            {(person.birth_date || person.birth_location || person.birth_place_id) && (
-              <div className="flex gap-4 items-start">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground w-14 pt-0.5 shrink-0">Birth</span>
-                <div className="space-y-0.5 min-w-0">
-                  {birthFmt && <p className="text-sm font-medium">{birthFmt}</p>}
-                  <LocationDisplay geocoded={birthPlace} raw={person.birth_location} />
-                </div>
+      {/* Timeline */}
+      {(() => {
+        type TimelineItem = { date: string | null; sortKey: string; type: "birth" | "death" | "story"; label: string; sublabel?: string; storyId?: string };
+        const items: TimelineItem[] = [];
+
+        if (person.birth_date || person.birth_location || person.birth_place_id) {
+          const loc = birthPlace?.display_name ?? person.birth_location;
+          items.push({ date: birthFmt, sortKey: person.birth_date ?? "0000", type: "birth", label: "Born", sublabel: loc ?? undefined });
+        }
+
+        for (const s of stories?.items ?? []) {
+          items.push({
+            date: s.event_date ? formatFlexDate(s.event_date, null, null, null) : null,
+            sortKey: s.event_date ?? "5000",
+            type: "story",
+            label: s.title,
+            sublabel: s.event_location ?? undefined,
+            storyId: s.id,
+          });
+        }
+
+        if (person.death_date || person.death_location || person.death_place_id) {
+          const loc = deathPlace?.display_name ?? person.death_location;
+          items.push({ date: deathFmt, sortKey: person.death_date ?? "9999", type: "death", label: "Died", sublabel: loc ?? undefined });
+        }
+
+        if (items.length === 0) return null;
+        items.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+        const dotColor = (type: string) =>
+          type === "birth" ? "bg-emerald-500" : type === "death" ? "bg-muted-foreground" : "bg-primary";
+
+        return (
+          <SectionCard title="Timeline">
+            <div className="relative pl-6">
+              {/* Vertical line */}
+              <div className="absolute left-[7px] top-1 bottom-1 w-px bg-border" />
+
+              <div className="space-y-4">
+                {items.map((item, i) => (
+                  <div key={i} className="relative flex gap-3 items-start">
+                    {/* Dot */}
+                    <div className={`absolute -left-6 top-1.5 w-[9px] h-[9px] rounded-full border-2 border-background ${dotColor(item.type)}`} />
+
+                    {/* Content */}
+                    <div className="min-w-0 flex-1">
+                      {item.storyId ? (
+                        <Link to={`${base}/stories/${item.storyId}`} className="text-sm font-medium hover:text-primary hover:underline">
+                          {item.label}
+                        </Link>
+                      ) : (
+                        <p className="text-sm font-medium">{item.label}</p>
+                      )}
+                      <div className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                        {item.date && <span>{item.date}</span>}
+                        {item.sublabel && <span>{item.date ? "·" : ""} {item.sublabel}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-            {(person.death_date || person.death_location || person.death_place_id) && (
-              <div className="flex gap-4 items-start">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground w-14 pt-0.5 shrink-0">Death</span>
-                <div className="space-y-0.5 min-w-0">
-                  {deathFmt && <p className="text-sm font-medium">{deathFmt}</p>}
-                  <LocationDisplay geocoded={deathPlace} raw={person.death_location} />
-                </div>
-              </div>
-            )}
-          </div>
-        </SectionCard>
-      )}
+            </div>
+          </SectionCard>
+        );
+      })()}
 
       {/* About */}
       <SectionCard title="About">
@@ -537,21 +576,23 @@ export function PersonDetailPage() {
         );
       })()}
 
-      {/* Stories */}
-      {stories && stories.items.length > 0 && (
-        <SectionCard title="Stories">
-          <div className="space-y-1">
-            {stories.items.map((s) => (
-              <Link key={s.id} to={`${base}/stories/${s.id}`}
-                className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted transition-colors group"
-              >
-                <span className="text-sm font-medium group-hover:text-primary">{s.title}</span>
-                {s.event_date && <span className="text-xs text-muted-foreground ml-4 shrink-0">{s.event_date.slice(0, 4)}</span>}
-              </Link>
-            ))}
-          </div>
-        </SectionCard>
-      )}
+
+      {/* Photos */}
+      {(() => {
+        const photos = (allMedia ?? []).filter(m => m.person_id === personId && m.mime_type?.startsWith("image/"));
+        if (photos.length === 0) return null;
+        return (
+          <SectionCard title="Photos">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {photos.map(m => (
+                <div key={m.id} className="aspect-square rounded-lg overflow-hidden border">
+                  <AuthImage treeId={treeId!} mediaId={m.id} alt={m.original_filename} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        );
+      })()}
 
       {/* Relationship edit dialog */}
       <Dialog open={!!editingRel} onOpenChange={o => { if (!o) setEditingRel(null); }}>
