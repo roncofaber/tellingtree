@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import type { Media } from "@/types/media";
 
 function formatSize(bytes: number | null): string {
@@ -23,6 +24,7 @@ export function MediaTab({ treeId }: { treeId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const { data: items, isLoading } = useQuery({
     queryKey: queryKeys.media.all(treeId),
@@ -127,7 +129,7 @@ export function MediaTab({ treeId }: { treeId: string }) {
                       a.href = url; a.download = m.original_filename; a.click();
                       URL.revokeObjectURL(url);
                     }} className="text-[10px] text-primary hover:underline">DL</button>
-                    <button onClick={() => deleteMut.mutate(m.id)} className="text-[10px] text-destructive hover:underline">Del</button>
+                    <button onClick={() => setConfirmDeleteId(m.id)} className="text-[10px] text-destructive hover:underline" disabled={deleteMut.isPending}>Delete</button>
                   </div>
                 </div>
               </div>
@@ -135,6 +137,15 @@ export function MediaTab({ treeId }: { treeId: string }) {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => { if (confirmDeleteId) deleteMut.mutate(confirmDeleteId); }}
+        title="Delete media?"
+        message="This file will be permanently deleted."
+        confirmLabel="Delete"
+        isPending={deleteMut.isPending}
+      />
     </div>
   );
 }

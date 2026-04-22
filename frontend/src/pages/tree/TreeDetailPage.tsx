@@ -577,7 +577,7 @@ export function TreeDetailPage() {
                 value={searchQuery}
                 onChange={e => handleSearchChange(e.target.value)}
                 onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
-                placeholder="Search…"
+                placeholder="Search… (Ctrl+K)"
                 className="h-8 w-32 sm:w-40 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </div>

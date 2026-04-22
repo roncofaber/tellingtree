@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { StoryEditor, extractMentionPersonIds } from "@/components/editor/StoryEditor";
 import { StoryAttachments } from "@/components/tree/StoryAttachments";
 import { StoryRenderer } from "@/components/editor/StoryRenderer";
@@ -276,6 +277,7 @@ export function StoryDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [form, setForm] = useState({
     title: "",
     event_date: "",
@@ -437,7 +439,7 @@ export function StoryDetailPage() {
               <h1 className="text-2xl font-bold">{story.title}</h1>
               <div className="flex gap-2 shrink-0">
                 <Button variant="outline" size="sm" onClick={startEdit}>Edit</Button>
-                <Button variant="destructive" size="sm" onClick={() => deleteMut.mutate()}>Delete</Button>
+                <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)} disabled={deleteMut.isPending}>Delete</Button>
               </div>
             </div>
             {(story.event_date || story.event_location) && (
@@ -447,6 +449,16 @@ export function StoryDetailPage() {
               </div>
             )}
           </div>
+
+          <ConfirmDialog
+            open={confirmDelete}
+            onClose={() => setConfirmDelete(false)}
+            onConfirm={() => deleteMut.mutate()}
+            title={`Delete "${story.title}"?`}
+            message="This story will be moved to the trash."
+            confirmLabel="Move to trash"
+            isPending={deleteMut.isPending}
+          />
 
           {/* Divider */}
           <div className="border-t" />

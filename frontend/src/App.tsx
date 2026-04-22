@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { Layout } from "@/components/layout/Layout";
 import { LoginPage } from "@/pages/LoginPage";
@@ -19,6 +20,7 @@ const queryClient = new QueryClient({
 
 function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
@@ -59,6 +61,7 @@ function App() {
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

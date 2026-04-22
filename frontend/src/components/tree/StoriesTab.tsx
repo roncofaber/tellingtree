@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { StoryEditor, extractMentionPersonIds } from "@/components/editor/StoryEditor";
 import { LocationInput } from "@/components/common/LocationInput";
 import { loadGraphSettings } from "@/lib/graphSettings";
@@ -37,6 +38,7 @@ export function StoriesTab({ treeId }: { treeId: string }) {
   const { treeSlug } = useParams<{ treeSlug: string }>();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [sort,   setSort]   = useState<SortKey>("event-desc");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -227,11 +229,20 @@ export function StoriesTab({ treeId }: { treeId: string }) {
                   })}
                 </div>
               </div>
-              <Button variant="destructive" size="sm" className="shrink-0" onClick={() => deleteMut.mutate(s.id)}>Del</Button>
+              <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setConfirmDeleteId(s.id)} disabled={deleteMut.isPending}>Delete</Button>
             </div>
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => { if (confirmDeleteId) deleteMut.mutate(confirmDeleteId); }}
+        title="Delete story?"
+        message="This story will be moved to the trash."
+        confirmLabel="Move to trash"
+        isPending={deleteMut.isPending}
+      />
     </div>
   );
 }

@@ -310,7 +310,7 @@ export function RelationshipsTab({ treeId }: Props) {
               <TableCell>
                 <div className="flex gap-1 justify-center">
                   <Button size="sm" variant="outline" onClick={() => setEditing(rel)}>Edit</Button>
-                  <Button size="sm" variant="destructive" onClick={() => deleteMut.mutate(rel.id)}>Del</Button>
+                  <Button size="sm" variant="destructive" onClick={() => deleteMut.mutate(rel.id)} disabled={deleteMut.isPending}>Delete</Button>
                 </div>
               </TableCell>
             </TableRow>
