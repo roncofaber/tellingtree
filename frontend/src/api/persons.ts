@@ -54,3 +54,9 @@ export function deletePerson(treeId: string, personId: string) {
 export function getPersonNetwork(treeId: string, personId: string) {
   return apiClient.get<Person[]>(`/trees/${treeId}/persons/${personId}/network`);
 }
+
+export function mergePersons(treeId: string, keeperId: string, duplicateId: string) {
+  return apiClient.post<Person>(`/trees/${treeId}/persons/${keeperId}/merge`, {
+    merge_person_id: duplicateId,
+  });
+}

@@ -1,13 +1,12 @@
 import { useMemo } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
-import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake } from "lucide-react";
+import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake, AlertTriangle } from "lucide-react";
 import { genderColor, getFullName } from "@/lib/person";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { getTree } from "@/api/trees";
 import { listPersons } from "@/api/persons";
 import { listRelationships } from "@/api/relationships";
-import { listAuditLogs } from "@/api/audit";
 import { listStories } from "@/api/stories";
 import { listTreePlaces, listTreePlaceDetails } from "@/api/places";
 import { formatFlexDate } from "@/lib/dates";
@@ -49,7 +48,6 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
   const { data: fullPersonsData } = useQuery({ queryKey: queryKeys.persons.full(treeId),          queryFn: () => listPersons(treeId, 0, 50000),      enabled: !!treeId });
   const { data: fullStoriesData } = useQuery({ queryKey: queryKeys.stories.all(treeId),           queryFn: () => listStories(treeId, { limit: 20 }), enabled: !!treeId });
   const { data: fullRelsData }    = useQuery({ queryKey: queryKeys.relationships.full(treeId),    queryFn: () => listRelationships(treeId, 0, 50000),enabled: !!treeId });
-  const { data: auditLogs }      = useQuery({ queryKey: ["trees", treeId, "audit"],               queryFn: () => listAuditLogs(treeId, 10),          enabled: !!treeId });
   const { data: placeDetails }    = useQuery({ queryKey: queryKeys.places.forTreeDetails(treeId), queryFn: () => listTreePlaceDetails(treeId),       enabled: !!treeId });
 
   const persons = fullPersonsData?.items ?? [];
@@ -128,6 +126,47 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
     ? Math.round(((stats.withBirthDate + stats.withLocation) / (persons.length * 2)) * 100)
     : 0;
 
+  const suggestions = useMemo(() => {
+    const items: { type: string; label: string; count?: number }[] = [];
+
+    // Possible duplicates (same name, birth years within 15 years)
+    const nameGroups = new Map<string, typeof persons>();
+    for (const p of persons) {
+      const key = [p.given_name, p.family_name].filter(Boolean).join(" ").toLowerCase();
+      if (!key) continue;
+      if (!nameGroups.has(key)) nameGroups.set(key, []);
+      nameGroups.get(key)!.push(p);
+    }
+    let dupeCount = 0;
+    for (const [, group] of nameGroups) {
+      if (group.length < 2) continue;
+      const years = group.map(p => p.birth_date ? parseInt(p.birth_date.slice(0, 4), 10) : null).filter((y): y is number => y !== null);
+      if (years.length >= 2 && Math.max(...years) - Math.min(...years) > 15) continue;
+      dupeCount++;
+    }
+    if (dupeCount > 0) items.push({ type: "duplicate", label: "Possible duplicates", count: dupeCount });
+
+    // Missing birth dates
+    const noBirthDate = persons.filter(p => !p.birth_date).length;
+    if (noBirthDate > 0) items.push({ type: "missing", label: "Missing birth date", count: noBirthDate });
+
+    // Missing gender
+    const noGender = persons.filter(p => !p.gender || p.gender === "unknown").length;
+    if (noGender > 0) items.push({ type: "missing", label: "Missing gender", count: noGender });
+
+    // Ungeocoded locations
+    const ungeocoded = persons.filter(p => (p.birth_location && !p.birth_place_id) || (p.death_location && !p.death_place_id)).length;
+    if (ungeocoded > 0) items.push({ type: "geocode", label: "Ungeocoded locations", count: ungeocoded });
+
+    // Orphan persons (no relationships)
+    const relPersonIds = new Set<string>();
+    for (const r of fullRelsData?.items ?? []) { relPersonIds.add(r.person_a_id); relPersonIds.add(r.person_b_id); }
+    const orphans = persons.filter(p => !relPersonIds.has(p.id)).length;
+    if (orphans > 0) items.push({ type: "orphan", label: "No relationships", count: orphans });
+
+    return items;
+  }, [persons, fullRelsData]);
+
   return (
     <div className="space-y-5 py-2">
 
@@ -141,16 +180,28 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
               <Users className="h-4 w-4 text-muted-foreground/50" />
             </div>
             <p className="text-3xl font-bold tabular-nums">{personsData?.total ?? "—"}</p>
-            {persons.length > 0 && (
-              <div className="flex items-center gap-2 mt-2">
-                {Object.entries(stats.genders).map(([g, n]) => (
-                  <span key={g} className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <span className={`w-2 h-2 rounded-full ${genderColor(g)}`} />
-                    {n}
-                  </span>
-                ))}
-              </div>
-            )}
+            {persons.length > 0 && (() => {
+              const total = persons.length;
+              const colorMap: Record<string, string> = { male: "#3b82f6", female: "#ec4899", other: "#f59e0b", unknown: "#94a3b8" };
+              const entries = Object.entries(stats.genders).sort(([, a], [, b]) => b - a);
+              return (
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex h-1.5 rounded-full overflow-hidden">
+                    {entries.map(([g, n]) => (
+                      <div key={g} style={{ width: `${(n / total) * 100}%`, backgroundColor: colorMap[g] ?? "#94a3b8" }} />
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {entries.map(([g, n]) => (
+                      <span key={g} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colorMap[g] ?? "#94a3b8" }} />
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
 
@@ -417,34 +468,24 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
         </div>
       </div>
 
-      {/* ── Recent activity (audit log) ────────────────────────────────── */}
-      {auditLogs && auditLogs.length > 0 && (
+      {/* ── Tree health suggestions ────────────────────────────────────── */}
+      {suggestions.length > 0 && (
         <>
           <div className="border-t" />
           <div className="space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent activity</h2>
-            <div className="space-y-1">
-              {auditLogs.map(log => {
-                const actionLabel = log.action === "create" ? "Added" : log.action === "update" ? "Updated" : log.action === "delete" ? "Deleted" : log.action === "restore" ? "Restored" : log.action;
-                const entityName = (log.details as Record<string, string> | null)?.name ?? log.entity_type;
-                const timeAgo = (() => {
-                  const diff = Date.now() - new Date(log.created_at).getTime();
-                  const mins = Math.floor(diff / 60000);
-                  if (mins < 1) return "just now";
-                  if (mins < 60) return `${mins}m ago`;
-                  const hrs = Math.floor(mins / 60);
-                  if (hrs < 24) return `${hrs}h ago`;
-                  const days = Math.floor(hrs / 24);
-                  return `${days}d ago`;
-                })();
-                return (
-                  <div key={log.id} className="flex items-center gap-2 text-xs text-muted-foreground py-0.5">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${log.action === "create" ? "bg-emerald-500" : log.action === "delete" ? "bg-destructive" : "bg-primary"}`} />
-                    <span><span className="font-medium text-foreground">{actionLabel}</span> {log.entity_type} <span className="text-foreground">{entityName}</span></span>
-                    <span className="ml-auto shrink-0">{timeAgo}</span>
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                <AlertTriangle className="h-3 w-3" /> Suggestions
+              </h2>
+              <Link to={`${base}/manage?tab=health`} className="text-xs text-primary hover:underline">View all in Settings →</Link>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {suggestions.slice(0, 4).map(s => (
+                <div key={s.type} className="rounded-lg border px-3 py-2 text-xs">
+                  <span className="font-medium">{s.count}</span>
+                  <span className="text-muted-foreground ml-1">{s.label}</span>
+                </div>
+              ))}
             </div>
           </div>
         </>

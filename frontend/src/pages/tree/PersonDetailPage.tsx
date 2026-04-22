@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { toast } from "sonner";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { Network } from "lucide-react";
+import { Network, Merge, Printer } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPerson, updatePerson, deletePerson, listPersons } from "@/api/persons";
+import { getPerson, updatePerson, deletePerson, listPersons, mergePersons } from "@/api/persons";
 import { getTree } from "@/api/trees";
 import { getPlace } from "@/api/places";
 import { fetchMediaBlob, uploadMedia, listMedia } from "@/api/media";
@@ -132,6 +132,9 @@ export function PersonDetailPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState("");
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -258,6 +261,24 @@ export function PersonDetailPage() {
       toast.success("Person deleted");
       navigate(base);
     },
+  });
+
+  const mergeMut = useMutation({
+    mutationFn: () => {
+      if (!mergeTargetId) throw new Error("No target");
+      return mergePersons(treeId!, personId!, mergeTargetId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.persons.all(treeId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.persons.detail(treeId!, personId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.media.all(treeId!) });
+      setMergeOpen(false);
+      setMergeTargetId(null);
+      setMergeSearch("");
+      toast.success("Persons merged");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Merge failed"),
   });
 
   const picRef = useRef<HTMLInputElement>(null);
@@ -435,6 +456,14 @@ export function PersonDetailPage() {
             Graph
           </Button>
           <Button variant="outline" size="sm" onClick={startEdit}>Edit</Button>
+          <Button variant="outline" size="sm" onClick={() => setMergeOpen(true)}>
+            <Merge className="h-3.5 w-3.5 mr-1.5" />
+            Merge
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => window.print()} className="print:hidden">
+            <Printer className="h-3.5 w-3.5 mr-1.5" />
+            Print
+          </Button>
           <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)} disabled={deleteMut.isPending}>Delete</Button>
         </div>
       </div>
@@ -447,6 +476,66 @@ export function PersonDetailPage() {
         confirmLabel="Move to trash"
         isPending={deleteMut.isPending}
       />
+
+      {/* Merge dialog */}
+      <Dialog open={mergeOpen} onOpenChange={o => { if (!o) { setMergeOpen(false); setMergeSearch(""); setMergeTargetId(null); } }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Merge with another person</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Keep <span className="font-medium text-foreground">{name}</span> and merge data from another person into them. The other person will be removed.
+          </p>
+          <div className="space-y-3">
+            <Input
+              placeholder="Search for duplicate…"
+              value={mergeSearch}
+              onChange={e => setMergeSearch(e.target.value)}
+              autoFocus
+            />
+            {mergeSearch.trim() && (
+              <div className="max-h-[200px] overflow-y-auto space-y-0.5">
+                {(allPersons?.items ?? [])
+                  .filter(p => {
+                    if (p.id === personId) return false;
+                    const n = [p.given_name, p.family_name].filter(Boolean).join(" ").toLowerCase();
+                    return n.includes(mergeSearch.trim().toLowerCase());
+                  })
+                  .slice(0, 8)
+                  .map(p => {
+                    const pName = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
+                    const year = p.birth_date?.slice(0, 4);
+                    const selected = mergeTargetId === p.id;
+                    return (
+                      <button key={p.id} type="button" onClick={() => setMergeTargetId(p.id)}
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-left rounded-md transition-colors ${selected ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "hover:bg-muted"}`}>
+                        <span className="font-medium truncate">{pName}</span>
+                        {year && <span className="text-xs text-muted-foreground ml-auto">b. {year}</span>}
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
+            {mergeTargetId && (() => {
+              const target = (allPersons?.items ?? []).find(p => p.id === mergeTargetId);
+              if (!target) return null;
+              const tName = [target.given_name, target.family_name].filter(Boolean).join(" ") || "Unnamed";
+              return (
+                <div className="rounded-lg border bg-muted/50 p-3 text-sm space-y-1">
+                  <p>Merge <span className="font-semibold">{tName}</span> into <span className="font-semibold">{name}</span></p>
+                  <p className="text-xs text-muted-foreground">All relationships, stories, and media from {tName} will be transferred. Empty fields will be filled from their data.</p>
+                </div>
+              );
+            })()}
+            <Button
+              className="w-full"
+              variant="destructive"
+              disabled={!mergeTargetId || mergeMut.isPending}
+              onClick={() => mergeMut.mutate()}
+            >
+              {mergeMut.isPending ? "Merging…" : "Confirm merge"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Timeline */}
       {(() => {
@@ -483,14 +572,27 @@ export function PersonDetailPage() {
         return (
           <SectionCard title="Timeline">
             <div className="relative pl-6">
-              {/* Vertical line */}
-              <div className="absolute left-[7px] top-1 bottom-1 w-px bg-border" />
+              <div className="relative space-y-4" ref={(el) => {
+                if (!el || items.length < 2) return;
+                const line = el.querySelector("[data-timeline-line]") as HTMLElement;
+                if (!line) return;
+                const firstChild = el.children[1] as HTMLElement;
+                const lastChild = el.children[el.children.length - 1] as HTMLElement;
+                if (!firstChild || !lastChild) return;
+                const top = firstChild.offsetTop + 10;
+                const bottom = lastChild.offsetTop + 10;
+                line.style.top = `${top}px`;
+                line.style.height = `${bottom - top}px`;
+              }}>
+                {/* Single continuous line from first dot to last dot */}
+                {items.length > 1 && (
+                  <div data-timeline-line className="absolute left-[-17px] w-[2px] bg-border rounded-full" />
+                )}
 
-              <div className="space-y-4">
                 {items.map((item, i) => (
                   <div key={i} className="relative flex gap-3 items-start">
-                    {/* Dot */}
-                    <div className={`absolute -left-6 top-1.5 w-[9px] h-[9px] rounded-full border-2 border-background ${dotColor(item.type)}`} />
+                    {/* Dot — centered on line */}
+                    <div className={`absolute top-[6px] w-[9px] h-[9px] rounded-full border-2 border-background ${dotColor(item.type)} z-[1]`} style={{ left: "-20.5px" }} />
 
                     {/* Content */}
                     <div className="min-w-0 flex-1">

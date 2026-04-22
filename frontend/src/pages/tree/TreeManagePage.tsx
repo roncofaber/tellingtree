@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import { MembersTab } from "@/components/tree/MembersTab";
 import { TrashTab } from "@/components/tree/TrashTab";
 import { PlacesManageTab } from "@/components/tree/PlacesManageTab";
 import { RelationshipsTab } from "@/components/tree/RelationshipsTab";
+import { TreeHealthTab } from "@/components/tree/TreeHealthTab";
 
 const PREVIEW_DATA: f3.Data = [
   { id: "gf", data: { gender: "M", _gender: "male", "first name": "James", "last name": "Smith", nickname: "", birthday: "1935–2010" }, rels: { spouses: ["gm"], children: ["dad", "aunt"], parents: [] } },
@@ -229,9 +230,10 @@ export function TreeManagePage() {
         <h1 className="text-2xl font-bold">{tree?.name} — Settings</h1>
       </div>
 
-      <Tabs defaultValue="general">
+      <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab") || "general"}>
         <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
           <TabsTrigger value="general" className="shrink-0">General</TabsTrigger>
+          <TabsTrigger value="health" className="shrink-0">Health</TabsTrigger>
           <TabsTrigger value="graph" className="shrink-0">Graph</TabsTrigger>
           <TabsTrigger value="places" className="shrink-0">Places</TabsTrigger>
           <TabsTrigger value="relationships" className="shrink-0">Relationships</TabsTrigger>
@@ -353,6 +355,10 @@ export function TreeManagePage() {
             <CardHeader><CardTitle className="text-base">Members</CardTitle></CardHeader>
             <CardContent><MembersTab treeId={treeId!} /></CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="health" className="mt-4">
+          <TreeHealthTab treeId={treeId!} />
         </TabsContent>
 
         {/* ── Graph ── */}

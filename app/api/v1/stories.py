@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import get_current_user
 from app.core.errors import BadRequestError, NotFoundError
@@ -44,7 +44,16 @@ def list_stories(
         query = query.join(StoryTag).filter(StoryTag.tag_id == tag_id)
 
     total = query.count()
-    items = query.order_by(Story.created_at.desc()).offset(pagination["skip"]).limit(pagination["limit"]).all()
+    items = (query
+        .options(
+            selectinload(Story.person_links),
+            selectinload(Story.tag_links),
+        )
+        .order_by(Story.created_at.desc())
+        .offset(pagination["skip"])
+        .limit(pagination["limit"])
+        .all()
+    )
     return PaginatedResponse(
         items=[_story_to_response(s) for s in items],
         total=total,
