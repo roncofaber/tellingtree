@@ -519,16 +519,6 @@ export function TreeDetailPage() {
   const { data: pCount } = useQuery({ queryKey: queryKeys.persons.stat(treeId!),      queryFn: () => listPersons(treeId!, 0, 1),        enabled: !!treeId });
   const { data: sCount } = useQuery({ queryKey: queryKeys.stories.stat(treeId!),      queryFn: () => listStories(treeId!, { limit: 1 }), enabled: !!treeId });
 
-  if (isLoading) return <LoadingSpinner />;
-  if (error) return <ErrorMessage message={error instanceof Error ? error.message : "Failed to load tree"} />;
-  if (!tree || !treeId) return null;
-
-  const badge = (n: number | undefined) => n ? ` (${n})` : "";
-
-  const pathAfterSlug = location.pathname.slice(base.length).replace(/^\//, "");
-  const activeTab = VALID_TABS.includes(pathAfterSlug as typeof VALID_TABS[number]) ? pathAfterSlug : "home";
-  const tabLabel = TAB_LABELS[activeTab];
-
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -555,6 +545,16 @@ export function TreeDetailPage() {
       } catch { setSearchResults([]); }
     }, 300);
   }, [treeSlug]);
+
+  if (isLoading) return <LoadingSpinner />;
+  if (error) return <ErrorMessage message={error instanceof Error ? error.message : "Failed to load tree"} />;
+  if (!tree || !treeId) return null;
+
+  const badge = (n: number | undefined) => n ? ` (${n})` : "";
+
+  const pathAfterSlug = location.pathname.slice(base.length).replace(/^\//, "");
+  const activeTab = VALID_TABS.includes(pathAfterSlug as typeof VALID_TABS[number]) ? pathAfterSlug : "home";
+  const tabLabel = TAB_LABELS[activeTab];
 
   return (
     <div className="space-y-3">
