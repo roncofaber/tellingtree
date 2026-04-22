@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
-import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake, AlertTriangle } from "lucide-react";
+import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake, AlertTriangle, Search } from "lucide-react";
 import { genderColor, getFullName } from "@/lib/person";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
-import { getTree } from "@/api/trees";
+import { getTree, searchTree, type SearchResult } from "@/api/trees";
 import { listPersons } from "@/api/persons";
 import { listRelationships } from "@/api/relationships";
 import { listStories } from "@/api/stories";
@@ -529,6 +529,33 @@ export function TreeDetailPage() {
   const activeTab = VALID_TABS.includes(pathAfterSlug as typeof VALID_TABS[number]) ? pathAfterSlug : "home";
   const tabLabel = TAB_LABELS[activeTab];
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const handleSearchChange = useCallback((val: string) => {
+    setSearchQuery(val);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    if (val.trim().length < 2) { setSearchResults([]); setSearchOpen(false); return; }
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const results = await searchTree(treeSlug!, val.trim());
+        setSearchResults(results);
+        setSearchOpen(results.length > 0);
+      } catch { setSearchResults([]); }
+    }, 300);
+  }, [treeSlug]);
+
   return (
     <div className="space-y-3">
       {/* Header */}
@@ -540,13 +567,48 @@ export function TreeDetailPage() {
             : [{ label: tree.name }]
           ),
         ]} />
-        <button
-          onClick={() => navigate(`${base}/manage`)}
-          title="Tree settings"
-          className="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Search */}
+          <div ref={searchRef} className="relative">
+            <div className="flex items-center gap-1 border rounded-md px-2 bg-background">
+              <Search className="h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => handleSearchChange(e.target.value)}
+                onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
+                placeholder="Search…"
+                className="h-8 w-32 sm:w-40 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+            {searchOpen && searchResults.length > 0 && (
+              <div className="absolute top-full mt-1 right-0 z-50 w-64 rounded-lg border bg-popover shadow-lg overflow-hidden">
+                {searchResults.map(r => (
+                  <Link
+                    key={r.id}
+                    to={`${base}/${r.type === "person" ? "people" : "stories"}/${r.id}`}
+                    className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
+                    onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
+                  >
+                    {r.type === "person"
+                      ? <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      : <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    }
+                    <span className="font-medium truncate">{r.label}</span>
+                    {r.detail && <span className="text-xs text-muted-foreground ml-auto shrink-0">{r.detail}</span>}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => navigate(`${base}/manage`)}
+            title="Tree settings"
+            className="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Tabs — scrollable so they never overflow */}

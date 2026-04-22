@@ -1,12 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import or_
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.errors import BadRequestError, ForbiddenError, NotFoundError
 from app.db.session import get_db
+from app.models.person import Person
+from app.models.story import Story
 from app.models.tree import Tree, TreeMember, slugify
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
@@ -230,3 +233,59 @@ def remove_member(
 
     db.delete(member)
     db.commit()
+
+
+# --- Search ---
+
+
+class SearchResult(BaseModel):
+    type: str
+    id: uuid.UUID
+    label: str
+    detail: str | None = None
+
+
+@router.get("/{tree_id}/search", response_model=list[SearchResult])
+def search_tree(
+    tree_id: str,
+    q: str = Query(..., min_length=2),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_id = resolve_tree_id(db, tree_id)
+    check_tree_access(db, resolved_id, current_user.id, "viewer")
+    pattern = f"%{q}%"
+    results: list[SearchResult] = []
+
+    persons = (
+        db.query(Person)
+        .filter(
+            Person.tree_id == resolved_id,
+            Person.deleted_at.is_(None),
+            or_(
+                func.concat(func.coalesce(Person.given_name, ""), " ", func.coalesce(Person.family_name, "")).ilike(pattern),
+                Person.nickname.ilike(pattern),
+            ),
+        )
+        .limit(5)
+        .all()
+    )
+    for p in persons:
+        name = f"{p.given_name or ''} {p.family_name or ''}".strip() or "Unnamed"
+        year = str(p.birth_date.year) if p.birth_date else None
+        results.append(SearchResult(type="person", id=p.id, label=name, detail=f"b. {year}" if year else None))
+
+    stories = (
+        db.query(Story)
+        .filter(
+            Story.tree_id == resolved_id,
+            Story.deleted_at.is_(None),
+            Story.title.ilike(pattern),
+        )
+        .limit(5)
+        .all()
+    )
+    for s in stories:
+        results.append(SearchResult(type="story", id=s.id, label=s.title, detail=s.event_location))
+
+    return results

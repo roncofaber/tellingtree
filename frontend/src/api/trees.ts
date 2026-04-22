@@ -58,3 +58,14 @@ export function updateMember(treeId: string, userId: string, role: string) {
 export function removeMember(treeId: string, userId: string) {
   return apiClient.delete<void>(`/trees/${treeId}/members/${userId}`);
 }
+
+export interface SearchResult {
+  type: "person" | "story";
+  id: string;
+  label: string;
+  detail: string | null;
+}
+
+export function searchTree(treeSlug: string, q: string) {
+  return apiClient.get<SearchResult[]>(`/trees/${treeSlug}/search`, { q });
+}
