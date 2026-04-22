@@ -1,16 +1,20 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Settings, TreePine, Plus, LogOut, Search } from "lucide-react";
+import { LayoutDashboard, Settings, TreePine, Plus, LogOut, Search, Sun, Moon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { listTrees } from "@/api/trees";
 import { queryKeys } from "@/lib/queryKeys";
+import { setTheme } from "@/lib/theme";
 import { Separator } from "@/components/ui/separator";
 
 export function Sidebar() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [treeSearch, setTreeSearch] = useState("");
+  const [themeState, setThemeState] = useState(() =>
+    document.documentElement.classList.contains("dark") ? "dark" as const : "light" as const
+  );
 
   const { data: trees } = useQuery({
     queryKey: queryKeys.trees.all(),
@@ -24,8 +28,8 @@ export function Sidebar() {
         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
     }`;
 
-  const treeItem = (treeId: string) => {
-    const active = location.pathname.startsWith(`/trees/${treeId}`);
+  const treeItem = (slug: string) => {
+    const active = location.pathname.startsWith(`/trees/${slug}`);
     return `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
       active
         ? "bg-accent text-accent-foreground font-medium"
@@ -95,7 +99,7 @@ export function Sidebar() {
           {(trees?.items ?? [])
             .filter(t => !treeSearch || t.name.toLowerCase().includes(treeSearch.toLowerCase()))
             .map((tree) => (
-            <Link key={tree.id} to={`/trees/${tree.id}`} className={treeItem(tree.id)}>
+            <Link key={tree.id} to={`/trees/${tree.slug}`} className={treeItem(tree.slug)}>
               <TreePine className="h-3.5 w-3.5 shrink-0 opacity-60" />
               <span className="truncate">{tree.name}</span>
             </Link>
@@ -105,12 +109,24 @@ export function Sidebar() {
 
       <Separator className="my-4" />
 
-      {/* Settings */}
-      <div className="px-3 mb-4">
-        <NavLink to="/settings" className={navItem}>
+      {/* Settings + theme */}
+      <div className="px-3 mb-4 flex items-center gap-1">
+        <NavLink to="/settings" className={navItem} style={{ flex: 1 }}>
           <Settings className="h-4 w-4 shrink-0" />
           Settings
         </NavLink>
+        <button
+          onClick={() => {
+            const isDark = document.documentElement.classList.contains("dark");
+            const next = isDark ? "light" : "dark";
+            setTheme(next);
+            setThemeState(next);
+          }}
+          title={`Switch to ${document.documentElement.classList.contains("dark") ? "light" : "dark"} mode`}
+          className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors shrink-0"
+        >
+          {themeState === "dark" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+        </button>
       </div>
 
       {/* User footer */}

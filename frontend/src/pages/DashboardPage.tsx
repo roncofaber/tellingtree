@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { listTrees, createTree } from "@/api/trees";
 import { importGedcomStreaming, type ImportProgress } from "@/api/imports";
 import { queryKeys } from "@/lib/queryKeys";
@@ -52,9 +53,12 @@ export function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.trees.all() });
       setDialogOpen(false);
       setNewTreeName(""); setNewTreeDescription(""); setGedcomFile(null); setImportProgress(null);
-      navigate(`/trees/${tree.id}`);
+      toast.success(gedcomFile ? "Tree created and data imported" : "Tree created");
+      navigate(`/trees/${tree.slug}`);
     } catch (e) {
-      setCreateError(e instanceof Error ? e.message : "Failed");
+      const msg = e instanceof Error ? e.message : "Failed";
+      setCreateError(msg);
+      toast.error(msg);
     } finally { setCreating(false); }
   };
 
@@ -147,18 +151,19 @@ export function DashboardPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {trees?.items.map((tree) => (
-            <Link key={tree.id} to={`/trees/${tree.id}`}>
-              <Card className="hover:border-primary transition-colors cursor-pointer">
-                <CardHeader>
+            <Link key={tree.id} to={`/trees/${tree.slug}`}>
+              <Card className="hover:border-primary transition-colors cursor-pointer h-full">
+                <CardHeader className="pb-2">
                   <CardTitle className="text-lg">{tree.name}</CardTitle>
                 </CardHeader>
-                {tree.description && (
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {tree.description}
-                    </p>
-                  </CardContent>
-                )}
+                <CardContent className="space-y-2">
+                  {tree.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">{tree.description}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Updated {new Date(tree.updated_at).toLocaleDateString()}
+                  </p>
+                </CardContent>
               </Card>
             </Link>
           ))}

@@ -102,8 +102,11 @@ An individual in the family tree. All fields except `tree_id` are optional.
 | education | TEXT | Free-text education history |
 | bio | TEXT | Short biography |
 | profile_picture_id | UUID | FK → media (nullable, SET NULL on delete) |
+| deleted_at | TIMESTAMPTZ | NULL = active; set = soft-deleted (visible in Trash) |
 | created_at | TIMESTAMPTZ | |
 | updated_at | TIMESTAMPTZ | Auto-updated |
+
+**Soft-delete:** when a person is deleted via the API, `deleted_at` is set to the current timestamp. The record is excluded from all list/get queries but remains in the database. Admins can restore or permanently delete from the Trash tab.
 
 **Flexible date model:** the `birth_date` column holds the primary date; `birth_date_qualifier` records certainty (`exact`, `about`, `before`, etc.); `birth_date_2` holds the end bound for `between` ranges; `birth_date_original` preserves the raw source string (e.g. from GEDCOM) for display and round-tripping.
 
@@ -173,6 +176,7 @@ Custom types (godparent, mentor, caretaker, etc.) are accepted and stored — th
 | event_end_date | DATE | For stories spanning a range |
 | event_location | VARCHAR(255) | |
 | author_id | UUID | FK → users |
+| deleted_at | TIMESTAMPTZ | NULL = active; set = soft-deleted |
 | created_at | TIMESTAMPTZ | |
 | updated_at | TIMESTAMPTZ | |
 
@@ -246,3 +250,31 @@ Standard many-to-many junction tables. Tags have `name` + `color` and are scoped
 6. **Flexible dates** — qualifier + range columns alongside the primary Date column handle GEDCOM-style approximate dates without losing sortability.
 7. **Cascade carefully** — deleting a tree cleans up everything. Deleting a place unlinks persons gracefully.
 8. **Timestamps are timezone-aware** — all `TIMESTAMPTZ`, always UTC.
+9. **Soft-delete** — persons and stories use `deleted_at` instead of hard delete. Restorable by admins.
+
+### audit_logs
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| id | UUID | Primary key |
+| tree_id | UUID | FK → trees (CASCADE) |
+| user_id | UUID | FK → users (SET NULL) |
+| action | VARCHAR(20) | create, update, delete, restore |
+| entity_type | VARCHAR(50) | person, story, relationship, etc. |
+| entity_id | UUID | The affected record's ID |
+| details | JSON | Additional context (field names, old values) |
+| created_at | TIMESTAMPTZ | When the action occurred |
+
+### tree_invites
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| id | UUID | Primary key |
+| tree_id | UUID | FK → trees (CASCADE) |
+| role | VARCHAR(20) | Role granted on acceptance (viewer/editor/admin) |
+| token | VARCHAR(64) | Unique, URL-safe invite token |
+| created_by | UUID | FK → users (SET NULL) |
+| expires_at | TIMESTAMPTZ | When the invite expires |
+| used_by | UUID | FK → users — set when accepted |
+| used_at | TIMESTAMPTZ | When it was accepted |
+| created_at | TIMESTAMPTZ | |

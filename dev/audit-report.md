@@ -240,13 +240,15 @@ Sidebar
 
 ### Future
 - [ ] Email verification flow
-- [ ] Audit logging
-- [ ] Dark mode toggle
-- [ ] Keyboard shortcuts
+- [x] Audit logging — audit_logs table, log_action helper, person CRUD logged, admin-only view endpoint
+- [x] Dark mode toggle — theme.ts + sidebar toggle (light/dark/system), family-chart dark CSS
+- [x] Keyboard shortcuts — Cmd+K to focus search
+- [x] Confirmation dialogs — ConfirmDialog component, added to person delete
+- [x] 404 page — replaces silent redirect
 - [x] GEDCOM export — done (export service + endpoint + download button)
-- [ ] Performance optimization for large trees
-- [ ] Mobile-first responsive pass
-- [ ] Invite members via shareable link
+- [x] Performance optimization — pre-indexed relationship lookups O(n+m) instead of O(n×m)
+- [x] Mobile-first responsive pass — responsive grids, collapsible table columns, fluid search inputs, reduced padding
+- [x] Invite members via shareable link — token-based invites with expiry, acceptance page, clipboard copy
 
 ---
 

@@ -123,8 +123,22 @@ def update_story(
         raise NotFoundError("Story not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    person_ids = update_data.pop("person_ids", None)
     for key, value in update_data.items():
         setattr(story, key, value)
+
+    if person_ids is not None:
+        current_ids = {sp.person_id for sp in story.person_links}
+        wanted_ids = set(person_ids)
+        for pid in wanted_ids - current_ids:
+            person = db.query(Person).filter(Person.id == pid, Person.tree_id == tree_id).first()
+            if person is None:
+                raise BadRequestError(f"Person {pid} not found in this tree")
+            db.add(StoryPerson(story_id=story.id, person_id=pid))
+        for sp in story.person_links:
+            if sp.person_id not in wanted_ids:
+                db.delete(sp)
+
     db.commit()
     db.refresh(story)
     return _story_to_response(story)

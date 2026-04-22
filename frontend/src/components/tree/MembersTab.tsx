@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listMembers, addMember, updateMember, removeMember } from "@/api/trees";
+import { createInvite } from "@/api/invites";
 import { queryKeys } from "@/lib/queryKeys";
 import { ROLE_LABELS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,8 @@ export function MembersTab({ treeId }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [role, setRole] = useState("viewer");
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteRole, setInviteRole] = useState("viewer");
 
   const { data: members, isLoading } = useQuery({
     queryKey: queryKeys.trees.members(treeId),
@@ -182,6 +185,38 @@ export function MembersTab({ treeId }: Props) {
           )}
         </TableBody>
       </Table>
+
+      {/* Invite link generator */}
+      <div className="border-t pt-4 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Invite via link</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={inviteRole} onValueChange={(v) => { if (v !== null) setInviteRole(v); }}>
+            <SelectTrigger className="w-32 h-8"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="viewer">Viewer</SelectItem>
+              <SelectItem value="editor">Editor</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" onClick={async () => {
+            try {
+              const invite = await createInvite(treeId, { role: inviteRole });
+              const link = `${window.location.origin}/invite/${invite.token}`;
+              setInviteLink(link);
+              await navigator.clipboard.writeText(link);
+              toast.success("Invite link copied to clipboard");
+            } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
+          }}>
+            Generate link
+          </Button>
+        </div>
+        {inviteLink && (
+          <div className="flex items-center gap-2">
+            <Input value={inviteLink} readOnly className="h-8 text-xs font-mono" onClick={e => (e.target as HTMLInputElement).select()} />
+            <Button size="sm" variant="ghost" onClick={() => { navigator.clipboard.writeText(inviteLink); toast.success("Copied"); }}>Copy</Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

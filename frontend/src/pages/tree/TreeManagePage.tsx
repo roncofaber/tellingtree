@@ -8,7 +8,7 @@ import { resetTreeGeocoding } from "@/api/places";
 import { listPersons } from "@/api/persons";
 import { importGedcomStreaming, type ImportResult, type ImportProgress } from "@/api/imports";
 import { queryKeys } from "@/lib/queryKeys";
-import { loadGraphSettings, saveGraphSettings, getResolvedStyle, getResolvedLayout, applyGraphStyle, accentForGender, DEFAULT_STYLE, DEFAULT_LAYOUT, type GraphStyle, type GraphLayout } from "@/lib/graphSettings";
+import { loadGraphSettings, saveGraphSettings, getResolvedStyle, getResolvedLayout, applyGraphStyle, accentForGender, type GraphStyle, type GraphLayout } from "@/lib/graphSettings";
 import * as f3 from "family-chart";
 import "family-chart/styles/family-chart.css";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,6 +21,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { MembersTab } from "@/components/tree/MembersTab";
 import { TrashTab } from "@/components/tree/TrashTab";
+import { PlacesManageTab } from "@/components/tree/PlacesManageTab";
+import { RelationshipsTab } from "@/components/tree/RelationshipsTab";
 
 function previewIcon(g: string): string {
   if (g === "female" || g === "f") return "/female_icon.svg";
@@ -111,7 +113,7 @@ function GraphPreview({ style, layout }: { style: GraphStyle; layout: GraphLayou
   }, [styleKey, layoutKey]); // eslint-disable-line
 
   return (
-    <div ref={ref} className="f3 family-chart-light" style={{ width: "100%", height: 280, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0" }} />
+    <div ref={ref} className="f3 family-chart-light rounded-lg overflow-hidden border" style={{ width: "100%", height: 280 }} />
   );
 }
 
@@ -124,7 +126,7 @@ function rgbToHex(color: string): string {
 }
 
 export function TreeManagePage() {
-  const { treeId }    = useParams<{ treeId: string }>();
+  const { treeSlug }  = useParams<{ treeSlug: string }>();
   const navigate      = useNavigate();
   const queryClient   = useQueryClient();
 
@@ -150,15 +152,22 @@ export function TreeManagePage() {
   const [resetting,    setResetting]    = useState(false);
   const [resetResult,  setResetResult]  = useState<number | null>(null);
 
-  // Graph settings (localStorage)
+  const { data: tree, isLoading } = useQuery({
+    queryKey: queryKeys.trees.detail(treeSlug!),
+    queryFn:  () => getTree(treeSlug!),
+    enabled:  !!treeSlug,
+  });
+
+  const treeId = tree?.id;
+  const base = `/trees/${treeSlug}`;
+
+  // Graph settings (localStorage, keyed by UUID)
   const [graphSettings, setGraphSettings] = useState(() => loadGraphSettings(treeId ?? ""));
   const [rootSearch, setRootSearch] = useState("");
 
-  const { data: tree, isLoading } = useQuery({
-    queryKey: queryKeys.trees.detail(treeId!),
-    queryFn:  () => getTree(treeId!),
-    enabled:  !!treeId,
-  });
+  useEffect(() => {
+    if (treeId) setGraphSettings(loadGraphSettings(treeId));
+  }, [treeId]);
 
   const { data: personsData } = useQuery({
     queryKey: queryKeys.persons.full(treeId!),
@@ -238,7 +247,7 @@ export function TreeManagePage() {
       <div className="space-y-1">
         <Breadcrumb items={[
           { label: "Dashboard",          href: "/dashboard" },
-          { label: tree?.name ?? "Tree", href: `/trees/${treeId}` },
+          { label: tree?.name ?? "Tree", href: base },
           { label: "Settings" },
         ]} />
         <h1 className="text-2xl font-bold">{tree?.name} — Settings</h1>
@@ -248,6 +257,8 @@ export function TreeManagePage() {
         <TabsList className="w-full justify-start">
           <TabsTrigger value="general" className="shrink-0">General</TabsTrigger>
           <TabsTrigger value="graph" className="shrink-0">Graph</TabsTrigger>
+          <TabsTrigger value="places" className="shrink-0">Places</TabsTrigger>
+          <TabsTrigger value="relationships" className="shrink-0">Relationships</TabsTrigger>
           <TabsTrigger value="data" className="shrink-0">Data</TabsTrigger>
           <TabsTrigger value="trash" className="shrink-0">Trash</TabsTrigger>
           <TabsTrigger value="advanced" className="shrink-0">Advanced</TabsTrigger>
@@ -306,7 +317,7 @@ export function TreeManagePage() {
                   {/* Navigation */}
                   <div className="space-y-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Navigation</h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <div className="space-y-1">
                         <Label className="text-xs">Center person</Label>
                         <Input placeholder="Search…" value={rootSearch} onChange={e => setRootSearch(e.target.value)} className="h-7 text-xs" />
@@ -354,7 +365,7 @@ export function TreeManagePage() {
                   {/* Layout & animation */}
                   <div className="space-y-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Layout</h3>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="space-y-0.5">
                         <Label className="text-[10px]">Speed</Label>
                         <input type="range" min="200" max="1500" step="100" value={layout.transitionTime}
@@ -458,6 +469,14 @@ export function TreeManagePage() {
         </TabsContent>
 
         {/* ── Data ── */}
+        <TabsContent value="places" className="mt-4">
+          <PlacesManageTab treeId={treeId!} />
+        </TabsContent>
+
+        <TabsContent value="relationships" className="mt-4">
+          <RelationshipsTab treeId={treeId!} />
+        </TabsContent>
+
         <TabsContent value="data" className="space-y-4 mt-4">
           <Card>
             <CardHeader><CardTitle className="text-base">GEDCOM</CardTitle></CardHeader>

@@ -3,8 +3,10 @@ import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { Sidebar } from "./Sidebar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 export function Layout() {
   const [open, setOpen] = useState(false);
+  useKeyboardShortcuts();
 
   return (
     <div className="flex h-screen">
@@ -25,7 +27,7 @@ export function Layout() {
           <span className="font-bold">TellingTree</span>
         </header>
 
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-3 sm:p-6">
           <Outlet />
         </main>
       </div>

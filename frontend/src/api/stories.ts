@@ -51,6 +51,7 @@ export function updateStory(
     event_date?: string;
     event_end_date?: string;
     event_location?: string;
+    person_ids?: string[];
   }
 ) {
   return apiClient.put<Story>(`/trees/${treeId}/stories/${storyId}`, data);

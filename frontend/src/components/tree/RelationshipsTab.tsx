@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listRelationships, createRelationship, deleteRelationship, updateRelationship } from "@/api/relationships";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger,
@@ -74,6 +74,7 @@ function EditRelDialog({ rel, treeId, onClose }: { rel: Relationship | null; tre
 }
 
 export function RelationshipsTab({ treeId }: Props) {
+  const { treeSlug } = useParams<{ treeSlug: string }>();
   const queryClient = useQueryClient();
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [editing,    setEditing]    = useState<Relationship | null>(null);
@@ -167,15 +168,23 @@ export function RelationshipsTab({ treeId }: Props) {
   const isFormValid = personA && personB && personA !== personB && relType.length > 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <p className="text-sm text-muted-foreground">
-          {displayedRels.length} relationship(s)
-        </p>
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
+        <div className="flex flex-wrap gap-2 items-center flex-1 min-w-0">
+          <Input placeholder="Search by name…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-full sm:w-48" />
+          <Select value={typeFilter} onValueChange={v => { if (v !== null) setTypeFilter(v); }}>
+            <SelectTrigger className="h-8 w-36"><span className="text-sm">{typeFilter === "all" ? "All types" : TYPE_LABELS[typeFilter] ?? typeFilter}</span></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="parent">Parent</SelectItem>
+              <SelectItem value="spouse">Spouse</SelectItem>
+              <SelectItem value="partner">Partner</SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{displayedRels.length} / {rels?.total ?? 0}</span>
+        </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-            Add Relationship
-          </DialogTrigger>
+          <Button className="h-8 shrink-0" onClick={() => setDialogOpen(true)}>+ Add Relationship</Button>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add a Relationship</DialogTitle>
@@ -266,28 +275,13 @@ export function RelationshipsTab({ treeId }: Props) {
         </Dialog>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-2">
-        <Input placeholder="Search by name…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-48" />
-        <Select value={typeFilter} onValueChange={v => { if (v !== null) setTypeFilter(v); }}>
-          <SelectTrigger className="h-8 w-36"><span className="text-sm">{typeFilter === "all" ? "All types" : TYPE_LABELS[typeFilter]}</span></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            <SelectItem value="parent">Parent</SelectItem>
-            <SelectItem value="spouse">Spouse</SelectItem>
-            <SelectItem value="partner">Partner</SelectItem>
-          </SelectContent>
-        </Select>
-        <span className="text-xs text-muted-foreground">{displayedRels.length} shown</span>
-      </div>
-
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Person A</TableHead>
-            <TableHead>Relationship</TableHead>
+            <TableHead className="hidden sm:table-cell">Relationship</TableHead>
             <TableHead>Person B</TableHead>
-            <TableHead>Period</TableHead>
+            <TableHead className="hidden md:table-cell">Period</TableHead>
             <TableHead className="w-24">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -299,20 +293,20 @@ export function RelationshipsTab({ treeId }: Props) {
             return (
             <TableRow key={rel.id}>
               <TableCell>
-                <Link to={`/trees/${treeId}/persons/${rel.person_a_id}`} className="text-sm text-primary hover:underline">
+                <Link to={`/trees/${treeSlug}/people/${rel.person_a_id}`} className="text-sm text-primary hover:underline">
                   {personName(rel.person_a_id)}
                 </Link>
               </TableCell>
-              <TableCell className="text-sm">
+              <TableCell className="text-sm hidden sm:table-cell">
                 {TYPE_LABELS[rel.relationship_type] ?? rel.relationship_type}
                 {rel.relationship_type === "parent" ? " →" : " ↔"}
               </TableCell>
               <TableCell>
-                <Link to={`/trees/${treeId}/persons/${rel.person_b_id}`} className="text-sm text-primary hover:underline">
+                <Link to={`/trees/${treeSlug}/people/${rel.person_b_id}`} className="text-sm text-primary hover:underline">
                   {personName(rel.person_b_id)}
                 </Link>
               </TableCell>
-              <TableCell className="text-muted-foreground text-sm">{dateRange ?? "—"}</TableCell>
+              <TableCell className="text-muted-foreground text-sm hidden md:table-cell">{dateRange ?? "—"}</TableCell>
               <TableCell>
                 <div className="flex gap-1">
                   <Button size="sm" variant="outline" onClick={() => setEditing(rel)}>Edit</Button>

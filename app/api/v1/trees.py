@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.errors import BadRequestError, ForbiddenError, NotFoundError
 from app.db.session import get_db
-from app.models.tree import Tree, TreeMember
+from app.models.tree import Tree, TreeMember, slugify
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.tree import (
@@ -19,7 +19,7 @@ from app.schemas.tree import (
     TreeTransfer,
     TreeUpdate,
 )
-from app.services.permission import check_tree_access
+from app.services.permission import check_tree_access, resolve_tree_id
 from app.api.v1.deps import pagination_params
 
 router = APIRouter(prefix="/trees", tags=["trees"])
@@ -52,7 +52,9 @@ def create_tree(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    tree = Tree(owner_id=current_user.id, **data.model_dump())
+    from app.services.permission import make_unique_slug
+    slug = make_unique_slug(db, data.name)
+    tree = Tree(owner_id=current_user.id, slug=slug, **data.model_dump())
     db.add(tree)
     db.flush()
     db.add(TreeMember(tree_id=tree.id, user_id=current_user.id, role="owner"))
@@ -63,11 +65,12 @@ def create_tree(
 
 @router.get("/{tree_id}", response_model=TreeResponse)
 def get_tree(
-    tree_id: uuid.UUID,
+    tree_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return check_tree_access(db, tree_id, current_user.id, "viewer")
+    resolved_id = resolve_tree_id(db, tree_id)
+    return check_tree_access(db, resolved_id, current_user.id, "viewer")
 
 
 @router.put("/{tree_id}", response_model=TreeResponse)
@@ -77,10 +80,13 @@ def update_tree(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from app.services.permission import make_unique_slug
     tree = check_tree_access(db, tree_id, current_user.id, "admin")
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(tree, key, value)
+    if "name" in update_data:
+        tree.slug = make_unique_slug(db, tree.name, exclude_id=tree.id)
     db.commit()
     db.refresh(tree)
     return tree

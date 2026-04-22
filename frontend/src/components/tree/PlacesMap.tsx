@@ -8,12 +8,22 @@ interface PlaceWithPersons extends Place {
   persons?: { id: string; name: string; field: string }[];
 }
 
+export interface StoryMarker {
+  id: string;
+  title: string;
+  lat: number;
+  lon: number;
+  location: string;
+  year?: string;
+}
+
 interface Props {
   places: PlaceWithPersons[];
   selectedPlaceId?: string | null;
   onMarkerClick?: (placeId: string) => void;
   heatmap?: boolean;
   showMigration?: boolean;
+  storyMarkers?: StoryMarker[];
 }
 
 const defaultIcon = L.icon({
@@ -37,18 +47,21 @@ const selectedIcon = L.icon({
   className: "leaflet-marker-selected",
 });
 
-function FitBounds({ places }: { places: PlaceWithPersons[] }) {
+function FitBounds({ places, storyMarkers = [] }: { places: PlaceWithPersons[]; storyMarkers?: StoryMarker[] }) {
   const map = useMap();
   const prevCount = useRef(0);
 
   useEffect(() => {
-    const pts = places.filter((p) => p.lat !== null && p.lon !== null);
+    const pts: [number, number][] = [
+      ...places.filter(p => p.lat !== null && p.lon !== null).map(p => [p.lat!, p.lon!] as [number, number]),
+      ...storyMarkers.map(s => [s.lat, s.lon] as [number, number]),
+    ];
     if (pts.length === 0) return;
     if (pts.length === prevCount.current) return;
     prevCount.current = pts.length;
-    const bounds = L.latLngBounds(pts.map((p) => [p.lat!, p.lon!]));
+    const bounds = L.latLngBounds(pts);
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
-  }, [places, map]);
+  }, [places, storyMarkers, map]);
 
   return null;
 }
@@ -190,11 +203,19 @@ export function PickerMap({
 
 // ─── Main map ─────────────────────────────────────────────────────────────────
 
-export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = false, showMigration = false }: Props) {
+const storyIcon = L.divIcon({
+  className: "",
+  html: '<div style="width:14px;height:14px;background:#f59e0b;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3);"></div>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+  popupAnchor: [0, -10],
+});
+
+export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = false, showMigration = false, storyMarkers = [] }: Props) {
   const geocoded = places.filter((p) => p.lat !== null && p.lon !== null);
   if (geocoded.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-sm text-muted-foreground bg-slate-50 rounded-lg border">
+      <div className="h-full flex items-center justify-center text-sm text-muted-foreground bg-muted rounded-lg border">
         No geocoded places to display.
       </div>
     );
@@ -211,7 +232,7 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitBounds places={geocoded} />
+      <FitBounds places={geocoded} storyMarkers={storyMarkers} />
       {heatmap ? (
         <HeatmapLayer places={geocoded} />
       ) : (
@@ -243,6 +264,16 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
         ))
       )}
       {showMigration && <MigrationLayer places={geocoded} />}
+      {storyMarkers.map(s => (
+        <Marker key={`story-${s.id}`} position={[s.lat, s.lon]} icon={storyIcon}>
+          <Popup>
+            <div className="text-sm min-w-[120px]">
+              <p className="font-semibold">{s.title}</p>
+              <p className="text-xs text-muted-foreground">{[s.year, s.location].filter(Boolean).join(" · ")}</p>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
     </MapContainer>
   );
 }

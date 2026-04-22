@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { toast } from "sonner";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Network } from "lucide-react";
@@ -133,19 +134,23 @@ const REL_GROUP_ORDER: Array<{ key: RelGroup; label: string }> = [
 // ─── PersonDetailPage ─────────────────────────────────────────────────────────
 
 export function PersonDetailPage() {
-  const { treeId, personId } = useParams<{ treeId: string; personId: string }>();
+  const { treeSlug, personId } = useParams<{ treeSlug: string; personId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const { data: tree } = useQuery({
-    queryKey: queryKeys.trees.detail(treeId!),
-    queryFn:  () => getTree(treeId!),
-    enabled:  !!treeId,
+    queryKey: queryKeys.trees.detail(treeSlug!),
+    queryFn:  () => getTree(treeSlug!),
+    enabled:  !!treeSlug,
   });
+
+  const treeId = tree?.id;
+  const base = `/trees/${treeSlug}`;
 
   const { data: person, isLoading, error } = useQuery({
     queryKey: queryKeys.persons.detail(treeId!, personId!),
@@ -252,7 +257,7 @@ export function PersonDetailPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.all(treeId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.relationships.all(treeId!) });
       toast.success("Person deleted");
-      navigate(`/trees/${treeId}`);
+      navigate(base);
     },
   });
 
@@ -311,7 +316,7 @@ export function PersonDetailPage() {
 
         {/* Names */}
         <SectionCard title="Names">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-1"><Label className="text-xs">Given Name</Label><Input value={form.given_name} onChange={set("given_name")} /></div>
             <div className="space-y-1"><Label className="text-xs">Family Name</Label><Input value={form.family_name} onChange={set("family_name")} /></div>
             <div className="space-y-1"><Label className="text-xs">Maiden / Birth Name</Label><Input value={form.maiden_name} onChange={set("maiden_name")} placeholder="Birth surname" /></div>
@@ -351,7 +356,7 @@ export function PersonDetailPage() {
 
         {/* Identity */}
         <SectionCard title="Identity">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-1">
               <Label className="text-xs">Sex</Label>
               <Select value={form.gender} onValueChange={(v) => { if (v !== null) setForm(f => ({ ...f, gender: v })); }}>
@@ -387,8 +392,8 @@ export function PersonDetailPage() {
     <div className="space-y-5 max-w-2xl">
       <Breadcrumb items={[
         { label: "Dashboard",           href: "/dashboard" },
-        { label: tree?.name ?? "Tree",  href: `/trees/${treeId}` },
-        { label: "People",              href: `/trees/${treeId}?tab=people` },
+        { label: tree?.name ?? "Tree",  href: base },
+        { label: "People",              href: `${base}/people` },
         { label: name },
       ]} />
 
@@ -416,14 +421,23 @@ export function PersonDetailPage() {
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={() => navigate(`/trees/${treeId}?tab=graph&root=${personId}`)}>
+          <Button variant="outline" size="sm" onClick={() => navigate(`${base}/graph?root=${personId}`)}>
             <Network className="h-3.5 w-3.5 mr-1.5" />
             Graph
           </Button>
           <Button variant="outline" size="sm" onClick={startEdit}>Edit</Button>
-          <Button variant="destructive" size="sm" onClick={() => deleteMut.mutate()} disabled={deleteMut.isPending}>Delete</Button>
+          <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)} disabled={deleteMut.isPending}>Delete</Button>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() => deleteMut.mutate()}
+        title={`Delete ${name}?`}
+        message="This person will be moved to the trash. You can restore them from the tree settings."
+        confirmLabel="Move to trash"
+        isPending={deleteMut.isPending}
+      />
 
       {/* Life Events */}
       {(person.birth_date || person.birth_location || person.birth_place_id || person.death_date || person.death_location || person.death_place_id) && (
@@ -454,7 +468,7 @@ export function PersonDetailPage() {
       {/* About */}
       <SectionCard title="About">
         {(person.gender || person.occupation || person.nationalities?.length || person.education || person.is_living !== null) ? (
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
             {person.gender     && <InfoPair label="Sex"         value={person.gender.charAt(0).toUpperCase() + person.gender.slice(1)} />}
             {person.occupation && <InfoPair label="Occupation"  value={person.occupation} />}
             {person.nationalities && person.nationalities.length > 0 && <InfoPair label="Nationality" value={person.nationalities.join(", ")} />}
@@ -493,7 +507,7 @@ export function PersonDetailPage() {
                           {key === "other" && (
                             <Badge variant="secondary" className="text-xs shrink-0">{rel.relationship_type}</Badge>
                           )}
-                          <Link to={`/trees/${treeId}/persons/${otherId}`} className="flex items-center gap-2 group min-w-0 flex-1">
+                          <Link to={`${base}/people/${otherId}`} className="flex items-center gap-2 group min-w-0 flex-1">
                             <Avatar initials={resolveInitials(otherId)} size={28} />
                             <span className="text-sm font-medium group-hover:text-primary group-hover:underline truncate">{resolvePersonName(otherId)}</span>
                           </Link>
@@ -518,7 +532,7 @@ export function PersonDetailPage() {
         <SectionCard title="Stories">
           <div className="space-y-1">
             {stories.items.map((s) => (
-              <Link key={s.id} to={`/trees/${treeId}/stories/${s.id}`}
+              <Link key={s.id} to={`${base}/stories/${s.id}`}
                 className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted transition-colors group"
               >
                 <span className="text-sm font-medium group-hover:text-primary">{s.title}</span>
@@ -546,7 +560,7 @@ export function PersonDetailPage() {
               </Select>
             </div>
             {(relType === "spouse" || relType === "partner") && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1"><Label className="text-xs">Start Date</Label><Input type="date" value={relStart} onChange={e => setRelStart(e.target.value)} /></div>
                 <div className="space-y-1"><Label className="text-xs">End Date</Label><Input type="date" value={relEnd} onChange={e => setRelEnd(e.target.value)} /></div>
               </div>

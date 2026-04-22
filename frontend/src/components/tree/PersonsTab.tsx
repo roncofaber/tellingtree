@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listPersons, deletePerson } from "@/api/persons";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { queryKeys } from "@/lib/queryKeys";
 import { formatFlexDate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ function sortPersons(persons: Person[], sort: SortKey): Person[] {
 }
 
 export function PersonsTab({ treeId }: { treeId: string }) {
+  const { treeSlug } = useParams<{ treeSlug: string }>();
   const queryClient = useQueryClient();
 
   // Filter state
@@ -39,6 +41,7 @@ export function PersonsTab({ treeId }: { treeId: string }) {
   const [sort,    setSort]    = useState<SortKey>("name-asc");
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.persons.full(treeId),
@@ -81,10 +84,10 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             placeholder="Search by name…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-8 w-48"
+            className="h-8 w-full sm:w-48"
           />
           <Select value={sexFilter} onValueChange={(v) => { if (v !== null) setSexFilter(v); }}>
-            <SelectTrigger className="h-8 w-32">
+            <SelectTrigger className="h-8 w-36">
               <span className="text-sm">{sexFilter === "all" ? "All sexes" : sexFilter.charAt(0).toUpperCase() + sexFilter.slice(1)}</span>
             </SelectTrigger>
             <SelectContent>
@@ -95,8 +98,8 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             </SelectContent>
           </Select>
           <Select value={sort} onValueChange={(v) => { if (v !== null) setSort(v as SortKey); }}>
-            <SelectTrigger className="h-8 w-36">
-              <span className="text-sm">Sort: {sort.replace("-", " ").replace("asc", "↑").replace("desc", "↓")}</span>
+            <SelectTrigger className="h-8 w-40">
+              <span className="text-sm">{sort === "name-asc" ? "Name A→Z" : sort === "name-desc" ? "Name Z→A" : sort === "birth-asc" ? "Birth (oldest)" : sort === "birth-desc" ? "Birth (newest)" : "Recently added"}</span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="name-asc">Name A→Z</SelectItem>
@@ -118,10 +121,10 @@ export function PersonsTab({ treeId }: { treeId: string }) {
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
-            <TableHead>Born</TableHead>
-            <TableHead>Died</TableHead>
-            <TableHead>Sex</TableHead>
-            <TableHead>Occupation</TableHead>
+            <TableHead className="hidden sm:table-cell">Born</TableHead>
+            <TableHead className="hidden sm:table-cell">Died</TableHead>
+            <TableHead className="hidden md:table-cell">Sex</TableHead>
+            <TableHead className="hidden md:table-cell">Occupation</TableHead>
             <TableHead className="w-20">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -133,17 +136,17 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             return (
               <TableRow key={p.id}>
                 <TableCell className="max-w-[250px]">
-                  <Link to={`/trees/${treeId}/persons/${p.id}`} className="text-primary hover:underline font-medium truncate block" title={name}>
+                  <Link to={`/trees/${treeSlug}/people/${p.id}`} className="text-primary hover:underline font-medium truncate block" title={name}>
                     {name}
                   </Link>
                   {p.nickname && <span className="text-xs text-muted-foreground truncate block">"{p.nickname}"</span>}
                 </TableCell>
-                <TableCell className="text-sm">{born ?? "—"}</TableCell>
-                <TableCell className="text-sm">{died ?? "—"}</TableCell>
-                <TableCell className="text-sm capitalize">{p.gender ?? "—"}</TableCell>
-                <TableCell className="text-sm">{p.occupation ?? "—"}</TableCell>
+                <TableCell className="text-sm hidden sm:table-cell">{born ?? "—"}</TableCell>
+                <TableCell className="text-sm hidden sm:table-cell">{died ?? "—"}</TableCell>
+                <TableCell className="text-sm capitalize hidden md:table-cell">{p.gender ?? "—"}</TableCell>
+                <TableCell className="text-sm hidden md:table-cell">{p.occupation ?? "—"}</TableCell>
                 <TableCell>
-                  <Button variant="destructive" size="sm" onClick={() => deleteMut.mutate(p.id)} disabled={deleteMut.isPending}>Del</Button>
+                  <Button variant="destructive" size="sm" onClick={() => setDeleteId(p.id)} disabled={deleteMut.isPending}>Del</Button>
                 </TableCell>
               </TableRow>
             );
@@ -157,6 +160,14 @@ export function PersonsTab({ treeId }: { treeId: string }) {
           )}
         </TableBody>
       </Table>
+      <ConfirmDialog
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => { if (deleteId) deleteMut.mutate(deleteId); }}
+        title="Delete person?"
+        message="This person will be moved to the trash."
+        confirmLabel="Move to trash"
+      />
     </div>
   );
 }

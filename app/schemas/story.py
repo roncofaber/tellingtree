@@ -20,6 +20,7 @@ class StoryUpdate(BaseModel):
     event_date: date | None = None
     event_end_date: date | None = None
     event_location: str | None = Field(None, max_length=255)
+    person_ids: list[uuid.UUID] | None = None
 
 
 class StoryResponse(BaseModel):

@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import type { Media } from "@/types/media";
 
-function formatSize(bytes: number): string {
+function formatSize(bytes: number | null): string {
+  if (bytes === null) return "—";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -67,10 +68,10 @@ export function MediaTab({ treeId }: { treeId: string }) {
     <div className="space-y-3">
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2 items-center justify-between">
-        <div className="flex flex-wrap gap-2 items-center flex-1">
-          <Input placeholder="Search files…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-48" />
+        <div className="flex flex-wrap gap-2 items-center flex-1 min-w-0">
+          <Input placeholder="Search files…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-full sm:w-48" />
           <Select value={typeFilter} onValueChange={v => { if (v !== null) setTypeFilter(v); }}>
-            <SelectTrigger className="h-8 w-32">
+            <SelectTrigger className="h-8 w-36">
               <span className="text-sm">{typeFilter === "all" ? "All types" : typeFilter.charAt(0).toUpperCase() + typeFilter.slice(1)}</span>
             </SelectTrigger>
             <SelectContent>
@@ -82,14 +83,12 @@ export function MediaTab({ treeId }: { treeId: string }) {
               <SelectItem value="other">Other</SelectItem>
             </SelectContent>
           </Select>
-          <span className="text-xs text-muted-foreground">{filtered.length} file{filtered.length !== 1 ? "s" : ""}</span>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{filtered.length} file{filtered.length !== 1 ? "s" : ""}</span>
         </div>
-        <div>
-          <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} accept="image/*,audio/*,video/*,.pdf,.doc,.docx" />
-          <Button size="sm" onClick={() => fileRef.current?.click()} disabled={uploadMut.isPending}>
-            {uploadMut.isPending ? "Uploading…" : "Upload"}
-          </Button>
-        </div>
+        <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} accept="image/*,audio/*,video/*,.pdf,.doc,.docx" />
+        <Button className="h-8 shrink-0" onClick={() => fileRef.current?.click()} disabled={uploadMut.isPending}>
+          {uploadMut.isPending ? "Uploading…" : "+ Upload"}
+        </Button>
       </div>
 
       {/* Gallery */}
@@ -98,9 +97,9 @@ export function MediaTab({ treeId }: { treeId: string }) {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {filtered.map(m => (
-            <div key={m.id} className="group border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow">
+            <div key={m.id} className="group border rounded-lg overflow-hidden bg-card hover:shadow-md transition-shadow">
               {/* Preview */}
-              <div className="aspect-square bg-slate-50 flex items-center justify-center overflow-hidden">
+              <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
                 {isImage(m) ? (
                   <img src={getMediaDownloadUrl(treeId, m.id)} alt={m.original_filename} className="w-full h-full object-cover" />
                 ) : (

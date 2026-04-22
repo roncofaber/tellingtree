@@ -4,7 +4,6 @@ import { listTrash, restorePerson, permanentDeletePerson, restoreStory, permanen
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 export function TrashTab({ treeId }: { treeId: string }) {

@@ -156,3 +156,39 @@ Global geocoding cache (not tree-scoped). Places are shared across trees.
 `GET /places/search` response: array of PlaceResponse objects `{ id, display_name, city, region, country, country_code, lat, lon, osm_id, osm_type, place_type, geocoder, geocoded_at, created_at }`.
 
 Geocoding: search hits the local DB first (ILIKE on display_name). On a miss it calls Nominatim, stores the result with `geocoder="nominatim"`, and returns it. The browser never calls Nominatim directly — rate limiting is server-side (1 req/sec, thread-safe). Sub-locality fields (hamlet, suburb, neighbourhood, quarter) are parsed and included in `display_name` when present. Coordinate deduplication threshold: 0.001° (~111m).
+
+## Trash (Soft-Delete)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /trees/:tree_id/trash | Yes | admin+ | List soft-deleted persons and stories |
+| POST | /trees/:tree_id/trash/persons/:id/restore | Yes | admin+ | Restore a soft-deleted person |
+| DELETE | /trees/:tree_id/trash/persons/:id | Yes | admin+ | Permanently delete a person |
+| POST | /trees/:tree_id/trash/stories/:id/restore | Yes | admin+ | Restore a soft-deleted story |
+| DELETE | /trees/:tree_id/trash/stories/:id | Yes | admin+ | Permanently delete a story |
+
+Deleting a person or story via the standard DELETE endpoint sets `deleted_at` instead of removing the record. Soft-deleted records are excluded from all list/get queries.
+
+## Audit Logging
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /trees/:tree_id/audit | Yes | admin+ | List recent audit log entries (default: 50, max: 200) |
+
+Audit entries are created automatically for person create/update/delete actions. Each entry includes: `action`, `entity_type`, `entity_id`, `details` (JSON), `user_id`, `created_at`.
+
+## GEDCOM Export
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /trees/:tree_id/export/gedcom | Yes | viewer+ | Download tree as GEDCOM 5.5.1 file |
+
+## Invitations
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | /trees/:tree_id/invites | Yes | admin+ | Create an invite link (role, expiry in days) |
+| GET | /trees/:tree_id/invites | Yes | admin+ | List active (unused, unexpired) invites |
+| DELETE | /trees/:tree_id/invites/:id | Yes | admin+ | Revoke an invite |
+| GET | /invite/:token | Yes | any | Get invite info (tree name, role, expiry) |
+| POST | /invite/:token/accept | Yes | any | Accept invite and join the tree |

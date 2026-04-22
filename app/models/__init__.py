@@ -1,3 +1,5 @@
+from app.models.audit import AuditLog
+from app.models.invite import TreeInvite
 from app.models.place import Place
 from app.models.user import User
 from app.models.tree import Tree, TreeMember
@@ -8,6 +10,8 @@ from app.models.media import Media
 from app.models.tag import Tag
 
 __all__ = [
+    "AuditLog",
+    "TreeInvite",
     "Place",
     "User",
     "Tree",

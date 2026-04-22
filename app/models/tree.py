@@ -1,3 +1,5 @@
+import re
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 
@@ -7,11 +9,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 
+def slugify(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[-\s]+", "-", text)
+    return text.strip("-") or "tree"
+
+
 class Tree(Base):
     __tablename__ = "trees"
 
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(280), nullable=False, unique=True, index=True)
     description: Mapped[str | None] = mapped_column(String, default=None)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(

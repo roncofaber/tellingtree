@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, health, imports, media, persons, places, relationships, stories, tags, trash, trees, users
+from app.api.v1 import audit, auth, health, imports, invites, media, persons, places, relationships, stories, tags, trash, trees, users
 from app.config import settings
 
 app = FastAPI(
@@ -34,3 +34,5 @@ app.include_router(imports.export_router, prefix="/api/v1")
 app.include_router(places.router, prefix="/api/v1")
 app.include_router(places.tree_router, prefix="/api/v1")
 app.include_router(trash.router, prefix="/api/v1")
+app.include_router(audit.router, prefix="/api/v1")
+app.include_router(invites.router, prefix="/api/v1")

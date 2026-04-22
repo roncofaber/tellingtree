@@ -128,7 +128,7 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
           {/* Names */}
           <fieldset className="space-y-2">
             <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Names</legend>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Given Name</Label>
                 <Input value={givenName} onChange={(e) => setGivenName(e.target.value)} autoFocus className={fieldBorder("givenName")} />
@@ -169,7 +169,7 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
           {/* Identity */}
           <fieldset className="space-y-2">
             <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Identity</legend>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Sex</Label>
                 <Select value={sex} onValueChange={(v) => { if (v !== null) setSex(v); }}>
@@ -204,7 +204,7 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
                   <SelectContent><SelectItem value="spouse">Spouse (married)</SelectItem><SelectItem value="partner">Partner</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1"><Label className="text-xs">Start Date <span className="text-muted-foreground">(optional)</span></Label><Input type="date" value={relStart} onChange={(e) => setRelStart(e.target.value)} /></div>
                 <div className="space-y-1"><Label className="text-xs">End Date <span className="text-muted-foreground">(if ended)</span></Label><Input type="date" value={relEnd} onChange={(e) => setRelEnd(e.target.value)} /></div>
               </div>

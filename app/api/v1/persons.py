@@ -13,6 +13,7 @@ from app.models.relationship import Relationship
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.person import PersonCreate, PersonResponse, PersonUpdate
+from app.services.audit import log_action
 from app.services.permission import check_tree_access
 from app.api.v1.deps import pagination_params
 
@@ -45,6 +46,9 @@ def create_person(
     check_tree_access(db, tree_id, current_user.id, "editor")
     person = Person(tree_id=tree_id, **data.model_dump())
     db.add(person)
+    db.flush()
+    log_action(db, tree_id, current_user.id, "create", "person", person.id,
+               {"name": f"{data.given_name or ''} {data.family_name or ''}".strip()})
     db.commit()
     db.refresh(person)
     return person
@@ -84,6 +88,8 @@ def update_person(
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(person, key, value)
+    log_action(db, tree_id, current_user.id, "update", "person", person_id,
+               {"fields": list(update_data.keys())})
     db.commit()
     db.refresh(person)
     return person
@@ -103,6 +109,8 @@ def delete_person(
     if person is None:
         raise NotFoundError("Person not found")
     person.deleted_at = datetime.now(timezone.utc)
+    log_action(db, tree_id, current_user.id, "delete", "person", person_id,
+               {"name": f"{person.given_name or ''} {person.family_name or ''}".strip()})
     db.commit()
 
 

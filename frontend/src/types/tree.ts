@@ -2,6 +2,7 @@ export interface Tree {
   id: string;
   owner_id: string;
   name: string;
+  slug: string;
   description: string | null;
   is_public: boolean;
   created_at: string;

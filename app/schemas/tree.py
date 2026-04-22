@@ -20,6 +20,7 @@ class TreeResponse(BaseModel):
     id: uuid.UUID
     owner_id: uuid.UUID
     name: str
+    slug: str
     description: str | None
     is_public: bool
     created_at: datetime

@@ -74,20 +74,23 @@ export function LocationInput({ value, placeId: _placeId, onChange, placeholder 
       )}
       {open && results.length > 0 && (
         <ul className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-60 overflow-y-auto text-sm">
-          {results.map((place) => (
-            <li
-              key={place.id}
-              className="px-3 py-2 cursor-pointer hover:bg-muted"
-              onMouseDown={(e) => { e.preventDefault(); handleSelect(place); }}
-            >
-              <span className="font-medium">{place.city ?? place.display_name.split(",")[0]}</span>
-              {(place.region || place.country) && (
-                <span className="text-muted-foreground ml-1 text-xs">
-                  {[place.region, place.country].filter(Boolean).join(", ")}
-                </span>
-              )}
-            </li>
-          ))}
+          {results.map((place) => {
+            const parts = place.display_name.split(", ");
+            const primary = parts[0];
+            const secondary = parts.slice(1).join(", ");
+            return (
+              <li
+                key={place.id}
+                className="px-3 py-2 cursor-pointer hover:bg-muted"
+                onMouseDown={(e) => { e.preventDefault(); handleSelect(place); }}
+              >
+                <span className="font-medium">{primary}</span>
+                {secondary && (
+                  <span className="text-muted-foreground ml-1 text-xs">{secondary}</span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

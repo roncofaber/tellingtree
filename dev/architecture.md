@@ -166,34 +166,40 @@ The DB engine and session factory use lazy initialization (`app/db/session.py`).
 
 ## Graph Visualization
 
-The family tree graph uses a two-library split:
+The family tree graph uses `family-chart`, a D3-based library purpose-built for genealogy.
 
-| Concern | Library | Notes |
-|---------|---------|-------|
-| Layout (node positions) | `relatives-tree` | Couple-as-unit algorithm; outputs `left`/`top` grid coordinates |
-| Rendering | React Flow (`@xyflow/react`) | Nodes, edges, zoom/pan, minimap, interactive handles |
+| Concern | Technology | Notes |
+|---------|------------|-------|
+| Layout + rendering | `family-chart` | D3-based; handles couples, generations, zoom/pan, expand/collapse natively |
 
-### Why relatives-tree
+### Why family-chart
 
-Generic DAG layout engines (e.g., Dagre/Graphviz) treat every node independently. In a family tree, spouses must share the same generation level and children must descend from their midpoint — the "couple-as-unit" constraint. `relatives-tree` encodes this natively: each person's node lists `parents`, `children`, `spouses`, and `siblings` arrays, and the algorithm guarantees couples are co-ranked.
-
-Graphviz WASM (the algorithm Gramps uses) was considered but rejected: ~3MB bundle, loading latency, and marginal quality gain over `relatives-tree` for typical genealogy trees.
+Previous attempts used `relatives-tree` + React Flow, then `entitree-flex` + React Flow — both required hundreds of lines of custom layout code and broke on complex families (multiple marriages, intermarriage). `family-chart` is a complete solution: layout AND rendering in one library, with native support for couples, DAG deduplication, and configurable depth.
 
 ### Data flow
 
 ```
 Person[] + Relationship[]
-  → toRelNodes()          # map to relatives-tree Node format
-  → calcTree(nodes, { rootId })   # layout: outputs ExtNode[] with left/top
-  → x = left * (NODE_W + HGAP)   # scale to pixel coordinates
-    y = top  * (NODE_H + VGAP)
-  → React Flow nodes[]    # rendered as PersonNode components
-  → React Flow edges[]    # parent/spouse/partner edges from Relationship[]
+  → toFamilyChartData()     # pre-indexed O(n+m) transformation
+  → f3.createChart(cont, data)  # library handles layout + SVG rendering
+  → mounted imperatively via useRef + useEffect
+  → setCardInnerHtmlCreator()   # custom card HTML with accent colors
+  → click/zoom/pan interactions via library callbacks
 ```
 
 ### Root person
 
-`relatives-tree` requires a `rootId` — the person the tree is centred on. Default: the person with no defined parents (oldest ancestor). Users can re-centre via "Center tree on this person" in the person detail panel. Disconnected nodes (not reachable from the root through the relationship graph) are hidden from the graph view but accessible via the Persons tab.
+`family-chart` centres the tree on a "main" person. Default: the person with no defined parents (oldest ancestor). Users can re-centre via double-click or Ctrl+click on any card. The setting persists in localStorage.
+
+### Features
+
+- Configurable depth (show N generations up/down)
+- Mini-tree expand indicators on boundary cards
+- Path-to-main highlighting on hover
+- Custom card design with gender accent colors
+- Slide-over panel on click showing person details
+- Add-relative buttons (parent/partner/child) on card hover
+- Graph styling configurable in tree settings with live preview
 
 ### Date display
 

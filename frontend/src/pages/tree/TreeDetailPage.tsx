@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Users, Heart, BookOpen, MapPin, Network, Calendar, Globe, Briefcase, Settings } from "lucide-react";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
+import { Users, Heart, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings } from "lucide-react";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { getTree } from "@/api/trees";
@@ -17,9 +17,8 @@ import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { PlacesMap } from "@/components/tree/PlacesMap";
 import { GraphTab }         from "@/components/tree/GraphTab";
 import { PersonsTab }       from "@/components/tree/PersonsTab";
-import { RelationshipsTab } from "@/components/tree/RelationshipsTab";
 import { StoriesTab }       from "@/components/tree/StoriesTab";
-import { PlacesTab }        from "@/components/tree/PlacesTab";
+import { MapTab }           from "@/components/tree/MapTab";
 import { MediaTab }         from "@/components/tree/MediaTab";
 
 // ─── Dashboard helpers ───────────────────────────────────────────────────────
@@ -44,8 +43,9 @@ function topN(items: string[], n: number): { value: string; count: number }[] {
 
 // ─── Dashboard tab ────────────────────────────────────────────────────────────
 
-function DashboardTab({ treeId }: { treeId: string }) {
+function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }) {
   const navigate = useNavigate();
+  const base = `/trees/${treeSlug}`;
 
   const { data: personsData }     = useQuery({ queryKey: queryKeys.persons.stat(treeId),          queryFn: () => listPersons(treeId, 0, 1),          enabled: !!treeId });
   const { data: relsData }        = useQuery({ queryKey: queryKeys.relationships.stat(treeId),    queryFn: () => listRelationships(treeId, 0, 1),    enabled: !!treeId });
@@ -62,7 +62,8 @@ function DashboardTab({ treeId }: { treeId: string }) {
     const genders: Record<string, number> = {};
     const allNationalities: string[] = [];
     const allOccupations: string[] = [];
-    let withBirthDate = 0, withLocation = 0, living = 0, deceased = 0;
+    const allSurnames: string[] = [];
+    let withBirthDate = 0, withLocation = 0, withBio = 0, living = 0, deceased = 0;
     let minYear = Infinity, maxYear = -Infinity;
 
     for (const p of persons) {
@@ -75,23 +76,26 @@ function DashboardTab({ treeId }: { treeId: string }) {
         if (y > maxYear) maxYear = y;
       }
       if (p.birth_location || p.birth_place_id) withLocation++;
+      if (p.bio) withBio++;
       if (p.is_living === true) living++;
       if (p.is_living === false) deceased++;
       if (p.nationalities) allNationalities.push(...p.nationalities);
       if (p.occupation) allOccupations.push(p.occupation);
+      if (p.family_name) allSurnames.push(p.family_name);
     }
 
     const relTypes: Record<string, number> = {};
     for (const r of fullRelsData?.items ?? []) {
-      if (r.relationship_type === "child") continue; // inverse of parent — skip to avoid double-count
+      if (r.relationship_type === "child") continue;
       relTypes[r.relationship_type] = (relTypes[r.relationship_type] ?? 0) + 1;
     }
 
     return {
-      genders, relTypes, living, deceased, withBirthDate, withLocation,
+      genders, relTypes, living, deceased, withBirthDate, withLocation, withBio,
       yearRange: minYear <= maxYear ? [minYear, maxYear] as const : null,
-      topNationalities: topN(allNationalities, 3),
-      topOccupations:   topN(allOccupations, 3),
+      topNationalities: topN(allNationalities, 5),
+      topOccupations:   topN(allOccupations, 5),
+      topSurnames:      topN(allSurnames, 5),
     };
   }, [persons, fullRelsData]);
 
@@ -113,7 +117,7 @@ function DashboardTab({ treeId }: { treeId: string }) {
       {/* ── Stat cards ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {/* People */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate("?tab=people", { replace: true })}>
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/people`, { replace: true })}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-muted-foreground">People</span>
@@ -134,7 +138,7 @@ function DashboardTab({ treeId }: { treeId: string }) {
         </Card>
 
         {/* Relationships */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate("?tab=relationships", { replace: true })}>
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/people`, { replace: true })}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-muted-foreground">Relationships</span>
@@ -150,7 +154,7 @@ function DashboardTab({ treeId }: { treeId: string }) {
         </Card>
 
         {/* Stories */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate("?tab=stories", { replace: true })}>
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/stories`, { replace: true })}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-muted-foreground">Stories</span>
@@ -161,7 +165,7 @@ function DashboardTab({ treeId }: { treeId: string }) {
         </Card>
 
         {/* Places */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate("?tab=places", { replace: true })}>
+        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/map`, { replace: true })}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-muted-foreground">Places</span>
@@ -181,57 +185,99 @@ function DashboardTab({ treeId }: { treeId: string }) {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Map — 3/5 */}
         {geocodedPlaces.length > 0 ? (
-          <Card className="lg:col-span-3 overflow-hidden">
-            <div className="h-[300px]">
-              <PlacesMap places={geocodedPlaces} />
-            </div>
-          </Card>
+          <div className="lg:col-span-3 overflow-hidden relative z-0 rounded-xl ring-1 ring-foreground/10 min-h-[300px]">
+            <PlacesMap places={geocodedPlaces} />
+          </div>
         ) : (
           <Card className="lg:col-span-3">
             <CardContent className="h-[300px] flex flex-col items-center justify-center gap-2 text-center">
               <MapPin className="h-8 w-8 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground">No geocoded places yet.</p>
-              <button onClick={() => navigate("?tab=places", { replace: true })} className="text-xs text-primary hover:underline">Go to Places →</button>
+              <button onClick={() => navigate(`${base}/map`, { replace: true })} className="text-xs text-primary hover:underline">Go to Map →</button>
             </CardContent>
           </Card>
         )}
 
         {/* Insights — 2/5 */}
         <Card className="lg:col-span-2">
-          <CardContent className="p-4 h-full flex flex-col gap-3">
+          <CardContent className="p-4 h-full flex flex-col gap-4">
             <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Insights</p>
-            <div className="space-y-3 text-sm flex-1">
+
+            {/* Key facts */}
+            <div className="space-y-2.5 text-sm flex-1">
               {stats.yearRange && (
                 <div className="flex items-center gap-2">
                   <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-muted-foreground">Birth years</span>
+                  <span className="text-muted-foreground">Spans</span>
                   <span className="font-medium ml-auto">{stats.yearRange[0]} – {stats.yearRange[1]}</span>
+                  {stats.yearRange[1] - stats.yearRange[0] > 0 && (
+                    <span className="text-xs text-muted-foreground">({stats.yearRange[1] - stats.yearRange[0]} yrs)</span>
+                  )}
                 </div>
               )}
               {(stats.living > 0 || stats.deceased > 0) && (
                 <div className="flex items-center gap-2">
                   <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-muted-foreground">Status</span>
-                  <span className="font-medium ml-auto text-right">{stats.living > 0 ? `${stats.living} living` : ""}{stats.living > 0 && stats.deceased > 0 ? " · " : ""}{stats.deceased > 0 ? `${stats.deceased} deceased` : ""}</span>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    {stats.living > 0 && <span className="inline-flex items-center gap-1 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{stats.living} living</span>}
+                    {stats.deceased > 0 && <span className="inline-flex items-center gap-1 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />{stats.deceased} deceased</span>}
+                  </div>
                 </div>
               )}
+
+              {/* Surnames */}
+              {stats.topSurnames.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1.5">Top surnames</p>
+                  <div className="flex flex-wrap gap-1">
+                    {stats.topSurnames.map(s => (
+                      <span key={s.value} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                        {s.value}<span className="text-muted-foreground">{s.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Nationalities */}
               {stats.topNationalities.length > 0 && (
-                <div className="flex items-start gap-2">
-                  <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                  <span className="text-muted-foreground shrink-0">Nationalities</span>
-                  <span className="font-medium ml-auto text-right truncate">{stats.topNationalities.map(n => n.value).join(", ")}</span>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Globe className="h-3 w-3 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">Nationalities</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {stats.topNationalities.map(n => (
+                      <span key={n.value} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                        {n.value}<span className="text-muted-foreground">{n.count}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
+
+              {/* Occupations */}
               {stats.topOccupations.length > 0 && (
-                <div className="flex items-start gap-2">
-                  <Briefcase className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                  <span className="text-muted-foreground shrink-0">Occupations</span>
-                  <span className="font-medium ml-auto text-right truncate">{stats.topOccupations.map(o => o.value).join(", ")}</span>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Briefcase className="h-3 w-3 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">Occupations</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {stats.topOccupations.map(o => (
+                      <span key={o.value} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                        {o.value}<span className="text-muted-foreground">{o.count}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Completeness breakdown */}
             {persons.length > 0 && (
-              <div className="space-y-1.5 pt-3 border-t">
+              <div className="space-y-2 pt-3 border-t">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Data completeness</span>
                   <span className="font-semibold">{completeness}%</span>
@@ -239,39 +285,22 @@ function DashboardTab({ treeId }: { treeId: string }) {
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                   <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completeness}%` }} />
                 </div>
+                <div className="grid grid-cols-3 gap-x-2 text-[11px] text-muted-foreground">
+                  <span>{stats.withBirthDate}/{persons.length} dated</span>
+                  <span>{stats.withLocation}/{persons.length} located</span>
+                  <span>{stats.withBio}/{persons.length} with bio</span>
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* ── Open Family Graph ───────────────────────────────────────────── */}
-      <button
-        onClick={() => navigate("?tab=graph", { replace: true })}
-        className="w-full rounded-xl border border-border bg-card hover:bg-accent hover:border-primary/40 transition-all px-5 py-4 flex items-center justify-between group"
-      >
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-            <Network className="h-5 w-5 text-primary" />
-          </div>
-          <div className="text-left">
-            <p className="text-sm font-semibold group-hover:text-primary transition-colors">Open Family Graph</p>
-            <p className="text-xs text-muted-foreground">Interactive tree visualization</p>
-          </div>
-        </div>
-        <span className="text-muted-foreground group-hover:text-primary transition-colors text-lg">→</span>
-      </button>
-
       {/* ── Recent activity ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Recent people */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recently added</h2>
-            {persons.length > 6 && (
-              <button onClick={() => navigate("?tab=people", { replace: true })} className="text-xs text-primary hover:underline">View all →</button>
-            )}
-          </div>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recently added</h2>
           {recentPersons.length === 0
             ? <p className="text-sm text-muted-foreground italic">No people yet.</p>
             : (
@@ -279,16 +308,19 @@ function DashboardTab({ treeId }: { treeId: string }) {
                 {recentPersons.map((p) => {
                   const name    = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
                   const ini     = ((p.given_name?.[0] ?? "") + (p.family_name?.[0] ?? "")).toUpperCase() || "?";
-                  const date    = formatFlexDate(p.birth_date, p.birth_date_qualifier, p.birth_date_2, p.birth_date_original);
+                  const bdate   = formatFlexDate(p.birth_date, p.birth_date_qualifier, p.birth_date_2, p.birth_date_original);
+                  const added   = new Date(p.created_at).toLocaleDateString();
                   const avatarBg = genderBadgeColor(p.gender ?? "unknown");
                   return (
-                    <Link key={p.id} to={`/trees/${treeId}/persons/${p.id}`}
+                    <Link key={p.id} to={`${base}/people/${p.id}`}
                       className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted transition-colors group"
                     >
                       <div className={`${avatarBg} w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>{ini}</div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{name}</p>
-                        {date && <p className="text-xs text-muted-foreground">b. {date}</p>}
+                        <p className="text-xs text-muted-foreground">
+                          {bdate ? `b. ${bdate}` : ""}{bdate ? " · " : ""}Added {added}
+                        </p>
                       </div>
                     </Link>
                   );
@@ -296,40 +328,42 @@ function DashboardTab({ treeId }: { treeId: string }) {
               </div>
             )
           }
+          {persons.length > 6 && (
+            <button onClick={() => navigate(`${base}/people`, { replace: true })} className="text-xs text-primary hover:underline w-full text-center pt-1">View all people →</button>
+          )}
         </div>
 
         {/* Recent stories */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent stories</h2>
-            {(fullStoriesData?.items.length ?? 0) > 5 && (
-              <button onClick={() => navigate("?tab=stories", { replace: true })} className="text-xs text-primary hover:underline">View all →</button>
-            )}
-          </div>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent stories</h2>
           {recentStories.length === 0
             ? <p className="text-sm text-muted-foreground italic">No stories yet.</p>
             : (
               <div className="space-y-0.5">
-                {recentStories.map((s) => (
-                  <Link key={s.id} to={`/trees/${treeId}/stories/${s.id}`}
-                    className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted transition-colors group"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <BookOpen className="h-3.5 w-3.5 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{s.title}</p>
-                      {(s.event_date || s.event_location) && (
+                {recentStories.map((s) => {
+                  const added = new Date(s.created_at).toLocaleDateString();
+                  return (
+                    <Link key={s.id} to={`${base}/stories/${s.id}`}
+                      className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted transition-colors group"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <BookOpen className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{s.title}</p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {[s.event_date?.slice(0, 4), s.event_location].filter(Boolean).join(" · ")}
+                          {[s.event_date?.slice(0, 4), s.event_location].filter(Boolean).join(" · ")}{(s.event_date || s.event_location) ? " · " : ""}Added {added}
                         </p>
-                      )}
-                    </div>
-                  </Link>
-                ))}
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )
           }
+          {(fullStoriesData?.items.length ?? 0) > 5 && (
+            <button onClick={() => navigate(`${base}/stories`, { replace: true })} className="text-xs text-primary hover:underline w-full text-center pt-1">View all stories →</button>
+          )}
         </div>
       </div>
     </div>
@@ -338,32 +372,37 @@ function DashboardTab({ treeId }: { treeId: string }) {
 
 // ─── TreeDetailPage ───────────────────────────────────────────────────────────
 
+const VALID_TABS = ["graph", "map", "people", "stories", "media"] as const;
+const TAB_LABELS: Record<string, string> = {
+  graph: "Graph", map: "Map", people: "People",
+  stories: "Stories", media: "Media",
+};
+
 export function TreeDetailPage() {
-  const { treeId } = useParams<{ treeId: string }>();
+  const { treeSlug } = useParams<{ treeSlug: string }>();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
 
   const { data: tree, isLoading, error } = useQuery({
-    queryKey: queryKeys.trees.detail(treeId!),
-    queryFn:  () => getTree(treeId!),
-    enabled:  !!treeId,
+    queryKey: queryKeys.trees.detail(treeSlug!),
+    queryFn:  () => getTree(treeSlug!),
+    enabled:  !!treeSlug,
   });
+
+  const treeId = tree?.id;
+  const base = `/trees/${treeSlug}`;
+
   const { data: pCount } = useQuery({ queryKey: queryKeys.persons.stat(treeId!),      queryFn: () => listPersons(treeId!, 0, 1),        enabled: !!treeId });
-  const { data: rCount } = useQuery({ queryKey: queryKeys.relationships.stat(treeId!), queryFn: () => listRelationships(treeId!, 0, 1),  enabled: !!treeId });
   const { data: sCount } = useQuery({ queryKey: queryKeys.stories.stat(treeId!),      queryFn: () => listStories(treeId!, { limit: 1 }), enabled: !!treeId });
-  const { data: plData } = useQuery({ queryKey: queryKeys.places.forTree(treeId!),    queryFn: () => listTreePlaces(treeId!),            enabled: !!treeId });
 
   if (isLoading) return <LoadingSpinner />;
   if (error) return <ErrorMessage message={error instanceof Error ? error.message : "Failed to load tree"} />;
-  if (!tree) return null;
+  if (!tree || !treeId) return null;
 
   const badge = (n: number | undefined) => n ? ` (${n})` : "";
 
-  const activeTab = searchParams.get("tab") || "home";
-  const TAB_LABELS: Record<string, string> = {
-    graph: "Graph", people: "People", relationships: "Relationships",
-    stories: "Stories", places: "Places", media: "Media",
-  };
+  const pathAfterSlug = location.pathname.slice(base.length).replace(/^\//, "");
+  const activeTab = VALID_TABS.includes(pathAfterSlug as typeof VALID_TABS[number]) ? pathAfterSlug : "home";
   const tabLabel = TAB_LABELS[activeTab];
 
   return (
@@ -373,12 +412,12 @@ export function TreeDetailPage() {
         <Breadcrumb items={[
           { label: "Dashboard", href: "/dashboard" },
           ...(tabLabel
-            ? [{ label: tree.name, href: `/trees/${treeId}` }, { label: tabLabel }]
+            ? [{ label: tree.name, href: base }, { label: tabLabel }]
             : [{ label: tree.name }]
           ),
         ]} />
         <button
-          onClick={() => navigate(`/trees/${treeId}/manage`)}
+          onClick={() => navigate(`${base}/manage`)}
           title="Tree settings"
           className="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
         >
@@ -387,37 +426,33 @@ export function TreeDetailPage() {
       </div>
 
       {/* Tabs — scrollable so they never overflow */}
-      <Tabs value={searchParams.get("tab") || "home"} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
+      <Tabs value={activeTab} onValueChange={(v) => navigate(v === "home" ? base : `${base}/${v}`, { replace: true })}>
         <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
-          <TabsTrigger value="home"          className="shrink-0">Home</TabsTrigger>
-          <TabsTrigger value="graph"         className="shrink-0">Graph</TabsTrigger>
-          <TabsTrigger value="people"        className="shrink-0">People{badge(pCount?.total)}</TabsTrigger>
-          <TabsTrigger value="relationships" className="shrink-0">Relationships{badge(rCount?.total)}</TabsTrigger>
-          <TabsTrigger value="stories"       className="shrink-0">Stories{badge(sCount?.total)}</TabsTrigger>
-          <TabsTrigger value="places"        className="shrink-0">Places{badge(plData?.length)}</TabsTrigger>
-          <TabsTrigger value="media"         className="shrink-0">Media</TabsTrigger>
+          <TabsTrigger value="home"    className="shrink-0">Home</TabsTrigger>
+          <TabsTrigger value="graph"   className="shrink-0">Graph</TabsTrigger>
+          <TabsTrigger value="map"     className="shrink-0">Map</TabsTrigger>
+          <TabsTrigger value="people"  className="shrink-0">People{badge(pCount?.total)}</TabsTrigger>
+          <TabsTrigger value="stories" className="shrink-0">Stories{badge(sCount?.total)}</TabsTrigger>
+          <TabsTrigger value="media"   className="shrink-0">Media</TabsTrigger>
         </TabsList>
 
         <TabsContent value="home">
-          <DashboardTab treeId={treeId!} />
+          <DashboardTab treeId={treeId} treeSlug={treeSlug!} />
         </TabsContent>
         <TabsContent value="graph">
-          <GraphTab treeId={treeId!} />
+          <GraphTab treeId={treeId} />
+        </TabsContent>
+        <TabsContent value="map">
+          <MapTab treeId={treeId} />
         </TabsContent>
         <TabsContent value="people">
-          <PersonsTab treeId={treeId!} />
-        </TabsContent>
-        <TabsContent value="relationships">
-          <RelationshipsTab treeId={treeId!} />
+          <PersonsTab treeId={treeId} />
         </TabsContent>
         <TabsContent value="stories">
-          <StoriesTab treeId={treeId!} />
-        </TabsContent>
-        <TabsContent value="places">
-          <PlacesTab treeId={treeId!} />
+          <StoriesTab treeId={treeId} />
         </TabsContent>
         <TabsContent value="media">
-          <MediaTab treeId={treeId!} />
+          <MediaTab treeId={treeId} />
         </TabsContent>
       </Tabs>
     </div>

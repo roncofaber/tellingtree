@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { listTreePlaceDetails, updatePlace, deletePlace, searchPlaces, batchGeocode, type BatchGeocodeEvent } from "@/api/places";
+import { listTreePlaceDetails, listTreePlaces, updatePlace, deletePlace, searchPlaces, batchGeocode, type BatchGeocodeEvent } from "@/api/places";
 import { listPersons, updatePerson } from "@/api/persons";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
-import { PlacesMap, PickerMap } from "@/components/tree/PlacesMap";
+import { PickerMap } from "@/components/tree/PlacesMap";
 import type { Place } from "@/types/place";
 
 // ─── Edit dialog ──────────────────────────────────────────────────────────────
@@ -28,6 +28,10 @@ function EditPlaceDialog({ place, treeId, onClose }: { place: Place | null; tree
   const [lat,         setLat]         = useState(String(place?.lat  ?? ""));
   const [lon,         setLon]         = useState(String(place?.lon  ?? ""));
   const [showPicker,  setShowPicker]  = useState(false);
+  const [reSearch,    setReSearch]    = useState("");
+  const [reResults,   setReResults]   = useState<Place[]>([]);
+  const [reLoading,   setReLoading]   = useState(false);
+  const [showRemap,   setShowRemap]   = useState(false);
 
   useEffect(() => {
     if (place) {
@@ -38,8 +42,33 @@ function EditPlaceDialog({ place, treeId, onClose }: { place: Place | null; tree
       setLat(String(place.lat ?? ""));
       setLon(String(place.lon ?? ""));
       setShowPicker(false);
+      setShowRemap(false);
+      setReSearch("");
+      setReResults([]);
     }
   }, [place]);
+
+  const doReSearch = async () => {
+    if (reSearch.trim().length < 2) return;
+    setReLoading(true);
+    try {
+      const results = await searchPlaces(reSearch.trim());
+      setReResults(results);
+    } catch { setReResults([]); }
+    finally { setReLoading(false); }
+  };
+
+  const applyReResult = (p: Place) => {
+    setDisplayName(p.display_name);
+    setCity(p.city ?? "");
+    setRegion(p.region ?? "");
+    setCountry(p.country ?? "");
+    setLat(String(p.lat ?? ""));
+    setLon(String(p.lon ?? ""));
+    setShowRemap(false);
+    setReSearch("");
+    setReResults([]);
+  };
 
   // Persons linked to this place (from cache — no extra request)
   const { data: personsData } = useQuery({
@@ -90,9 +119,55 @@ function EditPlaceDialog({ place, treeId, onClose }: { place: Place | null; tree
     <Dialog open={!!place} onOpenChange={o => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Edit Place</DialogTitle></DialogHeader>
+
+        {/* Re-geocode */}
+        <div className="space-y-2">
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline"
+            onClick={() => setShowRemap(r => !r)}
+          >
+            {showRemap ? "Cancel re-geocode" : "Re-geocode this place"}
+          </button>
+          {showRemap && (
+            <div className="space-y-2 rounded-lg border bg-muted/50 p-3">
+              <p className="text-xs text-muted-foreground">Search for the correct location — selecting a result will replace all fields.</p>
+              <div className="flex gap-2">
+                <Input
+                  value={reSearch}
+                  onChange={e => setReSearch(e.target.value)}
+                  placeholder="Search for correct place…"
+                  className="h-8 text-sm"
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); doReSearch(); } }}
+                />
+                <Button type="button" size="sm" className="h-8" onClick={doReSearch} disabled={reLoading || reSearch.trim().length < 2}>
+                  {reLoading ? "…" : "Search"}
+                </Button>
+              </div>
+              {reResults.length > 0 && (
+                <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                  {reResults.map(r => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className="w-full text-left rounded-md border bg-card px-3 py-2 text-sm hover:border-primary/50 hover:bg-accent transition-colors"
+                      onClick={() => applyReResult(r)}
+                    >
+                      <p className="font-medium">{r.display_name}</p>
+                      {r.lat !== null && r.lon !== null && (
+                        <p className="text-[10px] text-muted-foreground font-mono">{r.lat.toFixed(4)}, {r.lon.toFixed(4)}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <form onSubmit={e => { e.preventDefault(); saveMut.mutate(); }} className="space-y-3">
           <div className="space-y-1"><Label className="text-xs">Display Name</Label><Input value={displayName} onChange={e => setDisplayName(e.target.value)} required /></div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="space-y-1"><Label className="text-xs">City</Label><Input value={city} onChange={e => setCity(e.target.value)} /></div>
             <div className="space-y-1"><Label className="text-xs">Region</Label><Input value={region} onChange={e => setRegion(e.target.value)} /></div>
             <div className="space-y-1"><Label className="text-xs">Country</Label><Input value={country} onChange={e => setCountry(e.target.value)} /></div>
@@ -108,13 +183,13 @@ function EditPlaceDialog({ place, treeId, onClose }: { place: Place | null; tree
                 {showPicker ? "Hide map" : "Pick on map"}
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Input value={lat} onChange={e => setLat(e.target.value)} placeholder="45.8674" />
               <Input value={lon} onChange={e => setLon(e.target.value)} placeholder="8.9821" />
             </div>
             {showPicker && (
               <div className="mt-2 rounded-lg overflow-hidden border">
-                <p className="text-xs text-muted-foreground px-2 py-1 bg-slate-50 border-b">Click on the map to set coordinates</p>
+                <p className="text-xs text-muted-foreground px-2 py-1 bg-muted border-b">Click on the map to set coordinates</p>
                 <PickerMap
                   lat={lat ? parseFloat(lat) : null}
                   lon={lon ? parseFloat(lon) : null}
@@ -229,14 +304,19 @@ function GeocodeDialog({
 
   return (
     <Dialog open={!!raw} onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Geocode Location</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Raw:</span> <span className="font-medium">{raw?.location}</span>
-            <span className="text-xs text-muted-foreground ml-2">({raw?.personIds.length} {raw?.personIds.length === 1 ? "person" : "people"})</span>
+        <div className="space-y-4">
+          {/* Original location */}
+          <div className="rounded-lg border border-border bg-muted/50 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Original location</p>
+            <p className="text-sm font-semibold">{raw?.location}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Used by {raw?.personIds.length} {raw?.personIds.length === 1 ? "person" : "people"} · {raw?.field === "birth" ? "Birth" : "Death"} location
+            </p>
           </div>
 
+          {/* Search */}
           <div className="flex gap-2">
             <Input
               value={query}
@@ -249,30 +329,39 @@ function GeocodeDialog({
             </Button>
           </div>
 
-          {error && <p className="text-xs text-destructive">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
+          {/* Results */}
           {results.length > 0 && (
-            <div className="border rounded-lg divide-y">
-              {results.map(place => (
-                <div key={place.id} className="flex items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{place.display_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {[place.city, place.region, place.country].filter(Boolean).join(", ")}
-                      {place.lat !== null && place.lon !== null && (
-                        <span className="ml-2 font-mono">{place.lat.toFixed(4)}, {place.lon.toFixed(4)}</span>
-                      )}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm" variant="outline" className="shrink-0 ml-2"
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">{results.length} result{results.length !== 1 ? "s" : ""}</p>
+              <div className="space-y-2">
+                {results.map(place => (
+                  <button
+                    key={place.id}
+                    className="w-full text-left rounded-lg border border-border bg-card px-4 py-3 hover:border-primary/50 hover:bg-accent transition-colors disabled:opacity-50"
                     disabled={applying}
                     onClick={() => applyResult(place)}
                   >
-                    Select
-                  </Button>
-                </div>
-              ))}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{place.display_name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {place.place_type && ["hamlet", "suburb", "neighbourhood", "quarter", "village", "locality", "isolated_dwelling"].includes(place.place_type) && (
+                            <span className="inline-block rounded bg-muted px-1 py-0.5 text-[10px] mr-1.5">{place.place_type}</span>
+                          )}
+                          {[place.city, place.region, place.country].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                      {place.lat !== null && place.lon !== null && (
+                        <span className="text-[10px] font-mono text-muted-foreground shrink-0 mt-0.5 tabular-nums">
+                          {place.lat.toFixed(4)}, {place.lon.toFixed(4)}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -283,37 +372,72 @@ function GeocodeDialog({
 
 // ─── Raw location geocoder ────────────────────────────────────────────────────
 
+interface RawLocationEntry extends RawLocation {
+  geocodedPlace: string | null;
+  placeId: string | null;
+}
+
 function RawLocationsTab({ treeId }: { treeId: string }) {
   const queryClient = useQueryClient();
   const [geocoding, setGeocoding] = useState<RawLocation | null>(null);
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchGeocodeEvent | null>(null);
+  const [filter, setFilter] = useState<"all" | "unlinked" | "linked">("all");
 
   const { data: personsData } = useQuery({
     queryKey: queryKeys.persons.full(treeId),
     queryFn: () => listPersons(treeId, 0, 50000),
   });
 
-  const rawLocations = useMemo((): RawLocation[] => {
-    const map = new Map<string, { personIds: string[]; field: "birth" | "death" }>();
+  const { data: placesData } = useQuery({
+    queryKey: queryKeys.places.forTree(treeId),
+    queryFn: () => listTreePlaces(treeId),
+  });
+
+  const placeNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of placesData ?? []) m.set(p.id, p.display_name);
+    return m;
+  }, [placesData]);
+
+  const allLocations = useMemo((): RawLocationEntry[] => {
+    const map = new Map<string, RawLocationEntry>();
     for (const p of personsData?.items ?? []) {
-      if (p.birth_location && !p.birth_place_id) {
-        const existing = map.get(p.birth_location);
-        if (existing) existing.personIds.push(p.id);
-        else map.set(p.birth_location, { personIds: [p.id], field: "birth" });
+      if (p.birth_location) {
+        const key = `birth:${p.birth_location}`;
+        const existing = map.get(key);
+        if (existing) { existing.personIds.push(p.id); }
+        else {
+          map.set(key, {
+            location: p.birth_location, personIds: [p.id], field: "birth",
+            geocodedPlace: p.birth_place_id ? (placeNameMap.get(p.birth_place_id) ?? "Unknown place") : null,
+            placeId: p.birth_place_id,
+          });
+        }
       }
-      if (p.death_location && !p.death_place_id) {
+      if (p.death_location) {
         const key = `death:${p.death_location}`;
         const existing = map.get(key);
-        if (existing) existing.personIds.push(p.id);
-        else map.set(key, { personIds: [p.id], field: "death" });
+        if (existing) { existing.personIds.push(p.id); }
+        else {
+          map.set(key, {
+            location: p.death_location, personIds: [p.id], field: "death",
+            geocodedPlace: p.death_place_id ? (placeNameMap.get(p.death_place_id) ?? "Unknown place") : null,
+            placeId: p.death_place_id,
+          });
+        }
       }
     }
-    return [...map.entries()].map(([loc, data]) => ({
-      location: loc.startsWith("death:") ? loc.slice(6) : loc,
-      ...data,
-    }));
-  }, [personsData]);
+    return [...map.values()];
+  }, [personsData, placeNameMap]);
+
+  const filtered = useMemo(() => {
+    if (filter === "unlinked") return allLocations.filter(l => !l.placeId);
+    if (filter === "linked") return allLocations.filter(l => !!l.placeId);
+    return allLocations;
+  }, [allLocations, filter]);
+
+  const unlinkedCount = allLocations.filter(l => !l.placeId).length;
 
   const handleBatchGeocode = async () => {
     setBatchRunning(true); setBatchProgress(null);
@@ -325,14 +449,28 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
     } finally { setBatchRunning(false); }
   };
 
-  if (!rawLocations.length && !batchRunning) return <p className="text-sm text-muted-foreground py-6 text-center">All locations are geocoded.</p>;
+  if (!allLocations.length && !batchRunning) return <p className="text-sm text-muted-foreground py-6 text-center">No raw locations found.</p>;
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{rawLocations.length} unique unlinked location(s).</p>
-        <Button size="sm" variant="outline" disabled={batchRunning || rawLocations.length === 0} onClick={handleBatchGeocode}>
-          {batchRunning ? "Geocoding…" : "Geocode All"}
+      <div className="flex flex-wrap gap-2 items-center justify-between">
+        <div className="flex gap-2 items-center">
+          {(["all", "unlinked", "linked"] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+                filter === f
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted"
+              }`}
+            >
+              {f === "all" ? `All (${allLocations.length})` : f === "unlinked" ? `Unlinked (${unlinkedCount})` : `Linked (${allLocations.length - unlinkedCount})`}
+            </button>
+          ))}
+        </div>
+        <Button size="sm" variant="outline" disabled={batchRunning || unlinkedCount === 0} onClick={handleBatchGeocode}>
+          {batchRunning ? "Geocoding…" : `Geocode All (${unlinkedCount})`}
         </Button>
       </div>
       {batchRunning && batchProgress && (
@@ -348,28 +486,62 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
             {batchProgress.status === "error" && <span className="text-destructive">Error</span>}
           </div>
           {batchProgress.total && batchProgress.current !== undefined && (
-            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-primary transition-all duration-300"
                 style={{ width: `${Math.round((batchProgress.current / batchProgress.total) * 100)}%` }} />
             </div>
           )}
         </div>
       )}
-      <Table>
-        <TableHeader><TableRow><TableHead>Raw Location</TableHead><TableHead>Field</TableHead><TableHead>People</TableHead><TableHead className="w-28">Action</TableHead></TableRow></TableHeader>
+      <div className="overflow-x-auto">
+        <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="min-w-[180px]">Raw Location</TableHead>
+            <TableHead className="min-w-[180px]">Geocoded To</TableHead>
+            <TableHead className="w-16">Field</TableHead>
+            <TableHead className="w-16">People</TableHead>
+            <TableHead className="w-36">Action</TableHead>
+          </TableRow>
+        </TableHeader>
         <TableBody>
-          {rawLocations.map(raw => (
+          {filtered.map(raw => (
             <TableRow key={`${raw.field}:${raw.location}`}>
               <TableCell className="text-sm font-medium">{raw.location}</TableCell>
+              <TableCell>
+                {raw.geocodedPlace ? (
+                  <span className="text-sm text-emerald-600">{raw.geocodedPlace}</span>
+                ) : (
+                  <span className="text-sm text-amber-500 italic">Not linked</span>
+                )}
+              </TableCell>
               <TableCell><Badge variant="outline" className="text-xs capitalize">{raw.field}</Badge></TableCell>
               <TableCell className="text-sm text-muted-foreground">{raw.personIds.length}</TableCell>
               <TableCell>
-                <Button size="sm" variant="outline" onClick={() => setGeocoding(raw)}>Geocode</Button>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setGeocoding(raw)}>
+                    {raw.placeId ? "Remap" : "Geocode"}
+                  </Button>
+                  {raw.placeId && (
+                    <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => {
+                      const personField = raw.field === "birth" ? { birth_place_id: null } : { death_place_id: null };
+                      Promise.all(raw.personIds.map(pid => updatePerson(treeId, pid, personField))).then(() => {
+                        queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId) });
+                        queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId) });
+                        queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId) });
+                        toast.success("Place link removed");
+                      });
+                    }}>
+                      Unlink
+                    </Button>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      </div>
       <GeocodeDialog raw={geocoding} treeId={treeId} onClose={() => setGeocoding(null)} />
     </div>
   );
@@ -408,13 +580,11 @@ function exportGeoJSON(places: PlaceDetail[]) {
 
 // ─── PlacesTab ────────────────────────────────────────────────────────────────
 
-export function PlacesTab({ treeId }: { treeId: string }) {
+export function PlacesManageTab({ treeId }: { treeId: string }) {
+  const { treeSlug } = useParams<{ treeSlug: string }>();
   const queryClient = useQueryClient();
   const [search,          setSearch]          = useState("");
   const [editing,         setEditing]         = useState<Place | null>(null);
-  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
-  const [showHeatmap,     setShowHeatmap]     = useState(false);
-  const [showMigration,   setShowMigration]   = useState(false);
   const [collapsedCountries, setCollapsedCountries] = useState<Set<string>>(new Set());
   const [expandedPersons,   setExpandedPersons]    = useState<Set<string>>(new Set());
 
@@ -492,41 +662,10 @@ export function PlacesTab({ treeId }: { treeId: string }) {
 
         <TabsContent value="geocoded">
           <div className="space-y-3">
-            {/* Map */}
-            {geocoded > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-1">
-                    <button
-                      className={`text-xs px-2 py-1 rounded border transition-colors ${showHeatmap ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-200 hover:bg-slate-50"}`}
-                      onClick={() => setShowHeatmap(h => !h)}
-                    >
-                      Heatmap
-                    </button>
-                    <button
-                      className={`text-xs px-2 py-1 rounded border transition-colors ${showMigration ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-200 hover:bg-slate-50"}`}
-                      onClick={() => setShowMigration(m => !m)}
-                    >
-                      Migration lines
-                    </button>
-                  </div>
-                </div>
-                <div className="h-[500px] rounded-lg border overflow-hidden isolate">
-                  <PlacesMap
-                    places={filtered}
-                    selectedPlaceId={selectedPlaceId}
-                    onMarkerClick={setSelectedPlaceId}
-                    heatmap={showHeatmap}
-                    showMigration={showMigration}
-                  />
-                </div>
-              </div>
-            )}
-
             {/* Table toolbar */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Input placeholder="Filter places…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-56" />
+                <Input placeholder="Filter places…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-full sm:w-48" />
                 {byCountry.length > 1 && (
                   <button
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -538,7 +677,7 @@ export function PlacesTab({ treeId }: { treeId: string }) {
               </div>
               {filtered.length > 0 && (
                 <button
-                  className="text-xs px-2 py-1 rounded border bg-white border-slate-200 hover:bg-slate-50 transition-colors"
+                  className="text-xs px-2 py-1 rounded border bg-background border-border hover:bg-muted transition-colors"
                   onClick={() => exportGeoJSON(filtered as PlaceDetail[])}
                   title="Download visible places as GeoJSON"
                 >
@@ -569,7 +708,7 @@ export function PlacesTab({ treeId }: { treeId: string }) {
                     <tbody key={country}>
                       {/* Country header row */}
                       <tr
-                        className="cursor-pointer border-t-2 border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors"
+                        className="cursor-pointer border-t-2 border-border bg-muted/50 hover:bg-muted transition-colors"
                         onClick={() => toggleCountry(country)}
                       >
                         <td colSpan={5} className="py-2 px-4">
@@ -588,8 +727,6 @@ export function PlacesTab({ treeId }: { treeId: string }) {
                       {!collapsed && countryPlaces.map(p => (
                         <TableRow
                           key={p.id}
-                          className={`cursor-pointer ${p.id === selectedPlaceId ? "bg-primary/5" : ""}`}
-                          onClick={() => setSelectedPlaceId(prev => prev === p.id ? null : p.id)}
                         >
                           <TableCell>
                             <p className="font-medium text-sm">{p.display_name}</p>
@@ -612,7 +749,7 @@ export function PlacesTab({ treeId }: { treeId: string }) {
                                   {visible.map(pr => (
                                     <Link
                                       key={pr.id}
-                                      to={`/trees/${treeId}/persons/${pr.id}`}
+                                      to={`/trees/${treeSlug}/people/${pr.id}`}
                                       className="block text-xs text-primary hover:underline"
                                     >
                                       {pr.name} <span className="text-muted-foreground">({pr.field})</span>

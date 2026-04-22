@@ -1,33 +1,50 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import * as f3 from "family-chart";
 import "family-chart/styles/family-chart.css";
 import { listPersons } from "@/api/persons";
 import { listRelationships } from "@/api/relationships";
+import { listTreePlaces } from "@/api/places";
 import { queryKeys } from "@/lib/queryKeys";
 import type { Person } from "@/types/person";
 import type { Relationship } from "@/types/relationship";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { AddPersonDialog, type AddPersonRelationship, type RelativeKind } from "@/components/common/AddPersonDialog";
 import { Button } from "@/components/ui/button";
-import { loadGraphSettings, saveGraphSettings, getResolvedStyle, getResolvedLayout, applyGraphStyle, accentForGender, type GraphStyle } from "@/lib/graphSettings";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { formatFlexDate } from "@/lib/dates";
+import { loadGraphSettings, saveGraphSettings, getResolvedStyle, getResolvedLayout, applyGraphStyle, accentForGender } from "@/lib/graphSettings";
 
 // ─── Data transformer ────────────────────────────────────────────────────────
 
 function toFamilyChartData(persons: Person[], relationships: Relationship[]) {
-  return persons.map((p) => {
-    const parentIds = relationships
-      .filter((r) => r.relationship_type === "parent" && r.person_b_id === p.id)
-      .map((r) => r.person_a_id);
-    const childIds = relationships
-      .filter((r) => r.relationship_type === "parent" && r.person_a_id === p.id)
-      .map((r) => r.person_b_id);
-    const spouseIds = relationships
-      .filter((r) => (r.relationship_type === "spouse" || r.relationship_type === "partner")
-        && (r.person_a_id === p.id || r.person_b_id === p.id))
-      .map((r) => r.person_a_id === p.id ? r.person_b_id : r.person_a_id);
+  // Pre-index relationships for O(1) lookup per person instead of O(n) scan
+  const parentOf = new Map<string, string[]>();   // child_id → parent_ids
+  const childOf = new Map<string, string[]>();    // parent_id → child_ids
+  const spouseOf = new Map<string, Set<string>>(); // person_id → spouse_ids
 
+  for (const r of relationships) {
+    if (r.relationship_type === "parent") {
+      const parents = parentOf.get(r.person_b_id) ?? [];
+      parents.push(r.person_a_id);
+      parentOf.set(r.person_b_id, parents);
+      const children = childOf.get(r.person_a_id) ?? [];
+      children.push(r.person_b_id);
+      childOf.set(r.person_a_id, children);
+    } else if (r.relationship_type === "spouse" || r.relationship_type === "partner") {
+      const sa = spouseOf.get(r.person_a_id) ?? new Set();
+      sa.add(r.person_b_id);
+      spouseOf.set(r.person_a_id, sa);
+      const sb = spouseOf.get(r.person_b_id) ?? new Set();
+      sb.add(r.person_a_id);
+      spouseOf.set(r.person_b_id, sb);
+    }
+  }
+
+  const personIds = new Set(persons.map(p => p.id));
+
+  return persons.map((p) => {
     const rawYear = p.birth_date?.slice(0, 4);
     const deathYear = p.death_date?.slice(0, 4);
     const yearLabel = rawYear
@@ -45,12 +62,47 @@ function toFamilyChartData(persons: Person[], relationships: Relationship[]) {
         _gender: p.gender ?? "unknown",
       },
       rels: {
-        parents: [...new Set(parentIds)],
-        children: [...new Set(childIds)],
-        spouses: [...new Set(spouseIds)],
+        parents:  [...new Set(parentOf.get(p.id) ?? [])].filter(id => personIds.has(id)),
+        children: [...new Set(childOf.get(p.id) ?? [])].filter(id => personIds.has(id)),
+        spouses:  [...(spouseOf.get(p.id) ?? [])].filter(id => personIds.has(id)),
       },
     };
   });
+}
+
+type RelGroup = "parents" | "spouses" | "partners" | "children" | "other";
+
+function groupSidebarRels(rels: Relationship[], personId: string): Record<RelGroup, Relationship[]> {
+  const g: Record<RelGroup, Relationship[]> = { parents: [], spouses: [], partners: [], children: [], other: [] };
+  const seen = new Set<string>();
+  for (const rel of rels) {
+    const otherId = rel.person_a_id === personId ? rel.person_b_id : rel.person_a_id;
+    if (rel.relationship_type === "parent" || rel.relationship_type === "child") {
+      const key = `parent:${[personId, otherId].sort().join(":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const personIsParent =
+        (rel.relationship_type === "parent" && rel.person_a_id === personId) ||
+        (rel.relationship_type === "child"  && rel.person_b_id === personId);
+      (personIsParent ? g.children : g.parents).push(rel);
+    } else if (rel.relationship_type === "spouse") {
+      const key = `spouse:${[personId, otherId].sort().join(":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      g.spouses.push(rel);
+    } else if (rel.relationship_type === "partner") {
+      const key = `partner:${[personId, otherId].sort().join(":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      g.partners.push(rel);
+    } else {
+      const key = `${rel.relationship_type}:${[personId, otherId].sort().join(":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      g.other.push(rel);
+    }
+  }
+  return g;
 }
 
 function findDefaultRoot(persons: Person[], relationships: Relationship[]): string {
@@ -71,24 +123,24 @@ function genderIcon(g: string): string {
 // ─── Family chart wrapper ────────────────────────────────────────────────────
 
 function FamilyChartView({
-  data, mainId, onSelect, onAddRelative, chartRefOut,
-  initialAncestryDepth, initialProgenyDepth, treeId,
+  data, mainId, onSelect, onRecenter, onAddRelative, chartRefOut,
+  initialDepth, treeId,
 }: {
   data: ReturnType<typeof toFamilyChartData>;
   mainId: string;
   onSelect?: (personId: string) => void;
+  onRecenter?: (personId: string) => void;
   onAddRelative?: (state: AddPersonRelationship) => void;
   chartRefOut?: React.MutableRefObject<f3.Chart | null>;
-  initialAncestryDepth?: number;
-  initialProgenyDepth?: number;
+  initialDepth?: number;
   treeId: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<MutationObserver | null>(null);
   const chartRef = useRef<f3.Chart | null>(null);
 
-  const cbRef = useRef({ onSelect, onAddRelative });
-  cbRef.current = { onSelect, onAddRelative };
+  const cbRef = useRef({ onSelect, onRecenter, onAddRelative });
+  cbRef.current = { onSelect, onRecenter, onAddRelative };
 
   // Create chart once when data changes
   useEffect(() => {
@@ -108,8 +160,7 @@ function FamilyChartView({
         chart.setTransitionTime(layout.transitionTime);
         chart.setSingleParentEmptyCard(false);
         chart.setShowSiblingsOfMain(layout.showSiblings);
-        if (initialAncestryDepth) chart.setAncestryDepth(initialAncestryDepth);
-        if (initialProgenyDepth) chart.setProgenyDepth(initialProgenyDepth);
+        if (initialDepth) { chart.setAncestryDepth(initialDepth); chart.setProgenyDepth(initialDepth); }
 
         chart.setAfterUpdate(() => {
           cont.querySelectorAll<SVGPathElement>(".link").forEach(link => {
@@ -168,8 +219,12 @@ function FamilyChartView({
           </div>`;
         });
 
-        card.setOnCardClick((e, d) => {
-          card.onCardClickDefault(e, d);
+        card.setOnCardClick((e: MouseEvent, d: f3.TreeDatum) => {
+          if (e.ctrlKey || e.metaKey || e.detail === 2) {
+            card.onCardClickDefault(e, d);
+            cbRef.current.onRecenter?.(d.data.id);
+            return;
+          }
           cbRef.current.onSelect?.(d.data.id);
         });
 
@@ -249,14 +304,20 @@ function FamilyChartView({
 
 export function GraphTab({ treeId }: { treeId: string }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { treeSlug } = useParams<{ treeSlug: string }>();
   const settings = useMemo(() => loadGraphSettings(treeId), [treeId]);
 
+  const urlRoot = searchParams.get("root");
   const [addRelative,      setAddRelative]      = useState<AddPersonRelationship | null>(null);
-  const [rootPersonId,     setRootPersonId]     = useState<string | null>(settings.defaultRootPersonId);
+  const [rootPersonId,     setRootPersonId]     = useState<string | null>(urlRoot ?? settings.defaultRootPersonId);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
-  const [ancestryDepth,    setAncestryDepth]    = useState(settings.maxDepth || 3);
-  const [progenyDepth,     setProgenyDepth]     = useState(settings.maxDepth || 3);
+  const [depth, setDepth] = useState(settings.maxDepth || 3);
   const chartRef = useRef<f3.Chart | null>(null);
+
+  useEffect(() => {
+    if (urlRoot && urlRoot !== rootPersonId) setRootPersonId(urlRoot);
+  }, [urlRoot]);
 
   const { data: personsData, isLoading: pLoad, isError: pErr } = useQuery({
     queryKey: queryKeys.persons.full(treeId),
@@ -267,8 +328,18 @@ export function GraphTab({ treeId }: { treeId: string }) {
     queryFn:  () => listRelationships(treeId, 0, 50000),
   });
 
+  const { data: placesData } = useQuery({
+    queryKey: queryKeys.places.forTree(treeId),
+    queryFn: () => listTreePlaces(treeId),
+  });
+
   const persons = personsData?.items ?? [];
   const relationships = relsData?.items ?? [];
+  const placeById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of placesData ?? []) map.set(p.id, p.display_name);
+    return map;
+  }, [placesData]);
 
   const rootId = useMemo(() => {
     if (!persons.length) return "";
@@ -287,21 +358,21 @@ export function GraphTab({ treeId }: { treeId: string }) {
 
   const handleRecenter = useCallback((personId: string) => {
     setRootPersonId(personId);
-    setSelectedPersonId(personId);
     saveGraphSettings(treeId, { ...loadGraphSettings(treeId), defaultRootPersonId: personId });
   }, [treeId]);
 
-  const handleDepthChange = useCallback((type: "ancestry" | "progeny", depth: number) => {
+  const handleDepthChange = useCallback((d: number) => {
     const chart = chartRef.current;
     if (!chart) return;
-    if (type === "ancestry") {
-      setAncestryDepth(depth);
-      chart.setAncestryDepth(depth);
-    } else {
-      setProgenyDepth(depth);
-      chart.setProgenyDepth(depth);
+    setDepth(d);
+    chart.setAncestryDepth(d);
+    chart.setProgenyDepth(d);
+    try {
+      chart.updateTree({ tree_position: "fit" });
+    } catch {
+      // family-chart can throw on certain data shapes (e.g. orphan references)
     }
-    chart.updateTree({ tree_position: "fit" });
+    saveGraphSettings(treeId, { ...loadGraphSettings(treeId), maxDepth: d });
   }, []);
 
   if (pLoad || rLoad) return <LoadingSpinner />;
@@ -333,67 +404,152 @@ export function GraphTab({ treeId }: { treeId: string }) {
           mainId={rootId}
           treeId={treeId}
           onSelect={handleSelect}
+          onRecenter={handleRecenter}
           onAddRelative={setAddRelative}
           chartRefOut={chartRef}
-          initialAncestryDepth={ancestryDepth}
-          initialProgenyDepth={progenyDepth}
+          initialDepth={depth}
         />
 
-        {/* Depth controls */}
-        <div className="absolute top-2 right-2 z-10 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg px-3 py-2 shadow-sm space-y-1.5">
+        {/* Controls */}
+        <div className="absolute top-2 right-2 z-10 bg-background/90 backdrop-blur-sm border border-border rounded-lg px-2.5 py-1.5 shadow-sm flex items-center gap-2">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-500 font-medium w-14">Ancestors</span>
+            <span className="text-[10px] text-muted-foreground font-medium">Depth</span>
             {[1, 2, 3, 4, 5, 0].map(d => (
-              <button key={`a${d}`} onClick={() => handleDepthChange("ancestry", d)}
+              <button key={d} onClick={() => handleDepthChange(d)}
                 className={`w-5 h-5 rounded text-[10px] font-semibold transition-colors ${
-                  ancestryDepth === d ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  depth === d ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
                 }`}>
                 {d === 0 ? "∞" : d}
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-500 font-medium w-14">Children</span>
-            {[1, 2, 3, 4, 5, 0].map(d => (
-              <button key={`p${d}`} onClick={() => handleDepthChange("progeny", d)}
-                className={`w-5 h-5 rounded text-[10px] font-semibold transition-colors ${
-                  progenyDepth === d ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}>
-                {d === 0 ? "∞" : d}
-              </button>
-            ))}
-          </div>
+          <div className="w-px h-4 bg-border" />
+          <button
+            onClick={() => { const c = chartRef.current; if (c) c.updateTree({ tree_position: "fit" }); }}
+            title="Fit tree to view"
+            className="w-5 h-5 rounded text-[10px] font-semibold bg-muted text-muted-foreground hover:bg-muted/80 transition-colors flex items-center justify-center"
+          >
+            ⊞
+          </button>
         </div>
 
         <p className="absolute bottom-2 right-2 text-xs text-muted-foreground/50 pointer-events-none select-none z-10">
-          Click to re-center · Scroll to zoom · Drag to pan
+          Click to inspect · Dbl-click or Ctrl+click to re-center · Scroll to zoom · Drag to pan
         </p>
       </div>
 
-      {selectedPerson && (
-        <div className="mt-2 border rounded-lg px-4 py-3 bg-white flex items-center justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold truncate">
-              {[selectedPerson.given_name, selectedPerson.family_name].filter(Boolean).join(" ") || "Unnamed"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {selectedPerson.birth_date?.slice(0, 4) && `b. ${selectedPerson.birth_date.slice(0, 4)}`}
-              {selectedPerson.birth_location && ` · ${selectedPerson.birth_location}`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" variant="ghost" className="text-xs" onClick={() => handleRecenter(selectedPerson.id)}>
-              Set as default
-            </Button>
-            <Button size="sm" variant="outline"
-              onClick={() => navigate(`/trees/${treeId}/persons/${selectedPerson.id}?from=graph`)}>
-              View profile →
-            </Button>
-            <Button size="sm" variant="ghost" className="text-muted-foreground"
-              onClick={() => setSelectedPersonId(null)}>&times;</Button>
-          </div>
-        </div>
-      )}
+      <Sheet open={!!selectedPerson} onOpenChange={(o) => { if (!o) setSelectedPersonId(null); }}>
+        <SheetContent side="right" className="w-[85vw] sm:w-[420px] overflow-y-auto px-5 py-6">
+          {selectedPerson && (() => {
+            const p = selectedPerson;
+            const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
+            const birthFmt = formatFlexDate(p.birth_date, p.birth_date_qualifier, p.birth_date_2, p.birth_date_original);
+            const deathFmt = formatFlexDate(p.death_date, p.death_date_qualifier, p.death_date_2, p.death_date_original);
+
+            const personRels = relationships.filter(r =>
+              r.person_a_id === p.id || r.person_b_id === p.id
+            );
+
+            return (
+              <div className="space-y-6 pt-1">
+                {/* Header */}
+                <div>
+                  <h2 className="text-lg font-bold leading-tight">{name}</h2>
+                  {p.maiden_name && <p className="text-sm text-muted-foreground">(née {p.maiden_name})</p>}
+                  {p.nickname && <p className="text-sm text-muted-foreground italic">"{p.nickname}"</p>}
+                </div>
+
+                {/* Dates */}
+                {(birthFmt || deathFmt) && (() => {
+                  const birthLoc = (p.birth_place_id && placeById.get(p.birth_place_id)) || p.birth_location;
+                  const deathLoc = (p.death_place_id && placeById.get(p.death_place_id)) || p.death_location;
+                  return (
+                    <div className="space-y-2">
+                      {(birthFmt || birthLoc) && (
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground">Born</p>
+                          {birthFmt && <p className="text-sm">{birthFmt}</p>}
+                          {birthLoc && <p className="text-sm text-muted-foreground">{birthLoc}</p>}
+                        </div>
+                      )}
+                      {(deathFmt || deathLoc) && (
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground">Died</p>
+                          {deathFmt && <p className="text-sm">{deathFmt}</p>}
+                          {deathLoc && <p className="text-sm text-muted-foreground">{deathLoc}</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Details */}
+                <div className="space-y-1 text-sm">
+                  {p.gender && <p><span className="text-muted-foreground">Sex:</span> {p.gender.charAt(0).toUpperCase() + p.gender.slice(1)}</p>}
+                  {p.occupation && <p><span className="text-muted-foreground">Occupation:</span> {p.occupation}</p>}
+                  {p.education && <p><span className="text-muted-foreground">Education:</span> {p.education}</p>}
+                  {p.nationalities?.length ? <p><span className="text-muted-foreground">Nationalities:</span> {p.nationalities.join(", ")}</p> : null}
+                </div>
+
+                {/* Bio */}
+                {p.bio && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Bio</p>
+                    <p className="text-sm whitespace-pre-wrap line-clamp-6">{p.bio}</p>
+                  </div>
+                )}
+
+                {/* Relationships */}
+                {personRels.length > 0 && (() => {
+                  const groups = groupSidebarRels(personRels, p.id);
+                  const sections: { key: string; label: string }[] = [
+                    { key: "parents",  label: "Parents"  },
+                    { key: "spouses",  label: "Spouses"  },
+                    { key: "partners", label: "Partners" },
+                    { key: "children", label: "Children" },
+                    { key: "other",    label: "Other"    },
+                  ];
+                  return (
+                    <div className="space-y-3">
+                      {sections.map(({ key, label }) => {
+                        const rels = groups[key as keyof typeof groups];
+                        if (!rels.length) return null;
+                        return (
+                          <div key={key}>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+                            <div className="space-y-1">
+                              {rels.map(r => {
+                                const otherId = r.person_a_id === p.id ? r.person_b_id : r.person_a_id;
+                                const other = persons.find(pp => pp.id === otherId);
+                                const otherName = other ? [other.given_name, other.family_name].filter(Boolean).join(" ") || "Unnamed" : "Unknown";
+                                return (
+                                  <button key={r.id} className="flex items-center gap-2 text-sm text-primary hover:underline truncate text-left w-full" onClick={() => setSelectedPersonId(otherId)}>
+                                    {otherName}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2 pt-2 border-t">
+                  <Button size="sm" onClick={() => navigate(`/trees/${treeSlug}/people/${p.id}?from=graph`)}>
+                    Open full profile
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleRecenter(p.id)}>
+                    Center tree on this person
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
 
       <AddPersonDialog open={!!addRelative} treeId={treeId} relationship={addRelative} onClose={() => setAddRelative(null)} />
     </>
