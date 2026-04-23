@@ -19,6 +19,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { EditIcon, DeleteIcon } from "@/components/common/ActionIcons";
 
 interface Props {
   treeId: string;
@@ -163,13 +165,16 @@ export function RelationshipsTab({ treeId }: Props) {
     },
   });
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   if (isLoading) return <LoadingSpinner />;
 
   const isFormValid = personA && personB && personA !== personB && relType.length > 0;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 items-center justify-between">
+    <div className="flex flex-col h-full min-h-0 gap-3">
+      {/* Toolbar */}
+      <div className="flex flex-wrap gap-2 items-center justify-between shrink-0">
         <div className="flex flex-wrap gap-2 items-center flex-1 min-w-0">
           <Input placeholder="Search by name…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-full sm:w-48" />
           <Select value={typeFilter} onValueChange={v => { if (v !== null) setTypeFilter(v); }}>
@@ -275,56 +280,86 @@ export function RelationshipsTab({ treeId }: Props) {
         </Dialog>
       </div>
 
-      <Table className="table-fixed w-full">
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[30%]">Person A</TableHead>
-            <TableHead className="hidden sm:table-cell w-[15%]">Type</TableHead>
-            <TableHead className="w-[30%]">Person B</TableHead>
-            <TableHead className="hidden md:table-cell w-[10%]">Period</TableHead>
-            <TableHead className="w-[15%] text-center">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {displayedRels.map((rel) => {
-            const dateRange = rel.start_date || rel.end_date
-              ? `${rel.start_date?.slice(0, 4) ?? "?"} – ${rel.end_date ? rel.end_date.slice(0, 4) : "present"}`
-              : null;
-            return (
-            <TableRow key={rel.id}>
-              <TableCell className="truncate">
-                <Link to={`/trees/${treeSlug}/people/${rel.person_a_id}`} className="text-sm text-primary hover:underline">
-                  {personName(rel.person_a_id)}
-                </Link>
-              </TableCell>
-              <TableCell className="text-sm hidden sm:table-cell">
-                {TYPE_LABELS[rel.relationship_type] ?? rel.relationship_type}
-                {rel.relationship_type === "parent" ? " →" : " ↔"}
-              </TableCell>
-              <TableCell className="truncate">
-                <Link to={`/trees/${treeSlug}/people/${rel.person_b_id}`} className="text-sm text-primary hover:underline">
-                  {personName(rel.person_b_id)}
-                </Link>
-              </TableCell>
-              <TableCell className="text-muted-foreground text-sm hidden md:table-cell">{dateRange ?? "—"}</TableCell>
-              <TableCell>
-                <div className="flex gap-1 justify-center">
-                  <Button size="sm" variant="outline" onClick={() => setEditing(rel)}>Edit</Button>
-                  <Button size="sm" variant="destructive" onClick={() => deleteMut.mutate(rel.id)} disabled={deleteMut.isPending}>Delete</Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          );})}
-          {displayedRels.length === 0 && (
+      <div className="border rounded-lg flex flex-col min-h-0 flex-1">
+        <Table className="table-fixed">
+          <colgroup>
+            <col className="w-[30%]" />
+            <col className="hidden sm:table-column w-[15%]" />
+            <col className="w-[30%]" />
+            <col className="hidden md:table-column w-[15%]" />
+            <col className="w-[10%]" />
+          </colgroup>
+          <TableHeader className="bg-muted/50">
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                No relationships yet. Use the graph tab to add people in context.
-              </TableCell>
+              <TableHead>Person A</TableHead>
+              <TableHead className="hidden sm:table-cell">Type</TableHead>
+              <TableHead>Person B</TableHead>
+              <TableHead className="hidden md:table-cell">Period</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
-          )}
-        </TableBody>
-      </Table>
+          </TableHeader>
+        </Table>
+        <div className="overflow-auto flex-1 min-h-0">
+        <Table className="table-fixed">
+          <colgroup>
+            <col className="w-[30%]" />
+            <col className="hidden sm:table-column w-[15%]" />
+            <col className="w-[30%]" />
+            <col className="hidden md:table-column w-[15%]" />
+            <col className="w-[10%]" />
+          </colgroup>
+          <TableBody>
+            {displayedRels.map((rel) => {
+              const dateRange = rel.start_date || rel.end_date
+                ? `${rel.start_date?.slice(0, 4) ?? "?"} – ${rel.end_date ? rel.end_date.slice(0, 4) : "present"}`
+                : null;
+              return (
+                <TableRow key={rel.id}>
+                  <TableCell className="truncate">
+                    <Link to={`/trees/${treeSlug}/people/${rel.person_a_id}`} className="text-sm text-primary hover:underline font-medium">
+                      {personName(rel.person_a_id)}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-sm hidden sm:table-cell">
+                    {TYPE_LABELS[rel.relationship_type] ?? rel.relationship_type}
+                    {rel.relationship_type === "parent" ? " →" : " ↔"}
+                  </TableCell>
+                  <TableCell className="truncate">
+                    <Link to={`/trees/${treeSlug}/people/${rel.person_b_id}`} className="text-sm text-primary hover:underline font-medium">
+                      {personName(rel.person_b_id)}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm hidden md:table-cell">{dateRange ?? "—"}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-1.5">
+                      <EditIcon onClick={() => setEditing(rel)} />
+                      <DeleteIcon onClick={() => setConfirmDeleteId(rel.id)} disabled={deleteMut.isPending} />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {displayedRels.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  No relationships yet. Use the graph tab to add people in context.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+        </div>
+      </div>
 
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => { if (confirmDeleteId) deleteMut.mutate(confirmDeleteId); }}
+        title="Delete relationship?"
+        message="This relationship will be permanently removed."
+        confirmLabel="Delete"
+        isPending={deleteMut.isPending}
+      />
       <EditRelDialog rel={editing} treeId={treeId} onClose={() => setEditing(null)} />
     </div>
   );

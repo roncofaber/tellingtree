@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listPersons, deletePerson } from "@/api/persons";
+import { EditIcon, DeleteIcon } from "@/components/common/ActionIcons";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { queryKeys } from "@/lib/queryKeys";
 import { formatFlexDate } from "@/lib/dates";
@@ -76,9 +77,9 @@ export function PersonsTab({ treeId }: { treeId: string }) {
   if (isLoading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col h-full min-h-0 gap-3">
       {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 items-center justify-between">
+      <div className="flex flex-wrap gap-2 items-center justify-between shrink-0">
         <div className="flex flex-wrap gap-2 items-center flex-1 min-w-0">
           <Input
             placeholder="Search by name…"
@@ -117,18 +118,38 @@ export function PersonsTab({ treeId }: { treeId: string }) {
         <AddPersonDialog open={addDialogOpen} treeId={treeId} onClose={() => setAddDialogOpen(false)} />
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead className="hidden sm:table-cell">Born</TableHead>
-            <TableHead className="hidden sm:table-cell">Died</TableHead>
-            <TableHead className="hidden md:table-cell">Sex</TableHead>
-            <TableHead className="hidden md:table-cell">Occupation</TableHead>
-            <TableHead className="w-20">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+      <div className="border rounded-lg flex flex-col min-h-0 flex-1">
+        <Table className="table-fixed">
+          <colgroup>
+            <col className="w-[25%]" />
+            <col className="hidden sm:table-column w-[15%]" />
+            <col className="hidden sm:table-column w-[15%]" />
+            <col className="hidden md:table-column w-[10%]" />
+            <col className="hidden md:table-column w-[20%]" />
+            <col className="w-[15%]" />
+          </colgroup>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead className="hidden sm:table-cell">Born</TableHead>
+              <TableHead className="hidden sm:table-cell">Died</TableHead>
+              <TableHead className="hidden md:table-cell">Sex</TableHead>
+              <TableHead className="hidden md:table-cell">Occupation</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+        </Table>
+        <div className="overflow-auto flex-1 min-h-0">
+        <Table className="table-fixed">
+          <colgroup>
+            <col className="w-[25%]" />
+            <col className="hidden sm:table-column w-[15%]" />
+            <col className="hidden sm:table-column w-[15%]" />
+            <col className="hidden md:table-column w-[10%]" />
+            <col className="hidden md:table-column w-[20%]" />
+            <col className="w-[15%]" />
+          </colgroup>
+          <TableBody>
           {filtered.map((p) => {
             const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
             const born = formatFlexDate(p.birth_date, p.birth_date_qualifier, p.birth_date_2, p.birth_date_original);
@@ -146,7 +167,10 @@ export function PersonsTab({ treeId }: { treeId: string }) {
                 <TableCell className="text-sm capitalize hidden md:table-cell">{p.gender ?? "—"}</TableCell>
                 <TableCell className="text-sm hidden md:table-cell">{p.occupation ?? "—"}</TableCell>
                 <TableCell>
-                  <Button variant="destructive" size="sm" onClick={() => setDeleteId(p.id)} disabled={deleteMut.isPending}>Del</Button>
+                  <div className="flex gap-1.5">
+                    <EditIcon href={`/trees/${treeSlug}/people/${p.id}`} />
+                    <DeleteIcon onClick={() => setDeleteId(p.id)} disabled={deleteMut.isPending} />
+                  </div>
                 </TableCell>
               </TableRow>
             );
@@ -158,8 +182,10 @@ export function PersonsTab({ treeId }: { treeId: string }) {
               </TableCell>
             </TableRow>
           )}
-        </TableBody>
-      </Table>
+          </TableBody>
+        </Table>
+        </div>
+      </div>
       <ConfirmDialog
         open={!!deleteId}
         onClose={() => setDeleteId(null)}

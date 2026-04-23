@@ -63,65 +63,69 @@ export function TrashTab({ treeId }: { treeId: string }) {
       {persons.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">People ({persons.length})</h3>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Deleted</TableHead>
-                <TableHead className="w-40">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {persons.map(p => {
-                const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
-                const deletedAt = p.deleted_at ? new Date(p.deleted_at).toLocaleDateString() : "—";
-                return (
-                  <TableRow key={p.id}>
-                    <TableCell className="text-sm font-medium">{name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{deletedAt}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" onClick={() => restorePersonMut.mutate(p.id)}>Restore</Button>
-                        <Button size="sm" variant="destructive" onClick={() => { if (confirm("Permanently delete? This cannot be undone.")) permDeletePersonMut.mutate(p.id); }}>Delete forever</Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Deleted</TableHead>
+                  <TableHead className="w-40">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {persons.map(p => {
+                  const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
+                  const deletedAt = p.deleted_at ? new Date(p.deleted_at).toLocaleDateString() : "—";
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell className="text-sm font-medium">{name}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{deletedAt}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="outline" onClick={() => restorePersonMut.mutate(p.id)}>Restore</Button>
+                          <Button size="sm" variant="destructive" onClick={() => { if (confirm("Permanently delete? This cannot be undone.")) permDeletePersonMut.mutate(p.id); }}>Delete forever</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 
       {stories.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stories ({stories.length})</h3>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Deleted</TableHead>
-                <TableHead className="w-40">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {stories.map(s => {
-                const deletedAt = s.deleted_at ? new Date(s.deleted_at).toLocaleDateString() : "—";
-                return (
-                  <TableRow key={s.id}>
-                    <TableCell className="text-sm font-medium">{s.title}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{deletedAt}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" onClick={() => restoreStoryMut.mutate(s.id)}>Restore</Button>
-                        <Button size="sm" variant="destructive" onClick={() => { if (confirm("Permanently delete? This cannot be undone.")) permDeleteStoryMut.mutate(s.id); }}>Delete forever</Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Deleted</TableHead>
+                  <TableHead className="w-40">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stories.map(s => {
+                  const deletedAt = s.deleted_at ? new Date(s.deleted_at).toLocaleDateString() : "—";
+                  return (
+                    <TableRow key={s.id}>
+                      <TableCell className="text-sm font-medium">{s.title}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{deletedAt}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="outline" onClick={() => restoreStoryMut.mutate(s.id)}>Restore</Button>
+                          <Button size="sm" variant="destructive" onClick={() => { if (confirm("Permanently delete? This cannot be undone.")) permDeleteStoryMut.mutate(s.id); }}>Delete forever</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
     </div>

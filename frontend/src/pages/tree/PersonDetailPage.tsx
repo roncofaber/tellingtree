@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { EditIcon, DeleteIcon } from "@/components/common/ActionIcons";
 import { toast } from "sonner";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Network, Merge, Printer } from "lucide-react";
@@ -24,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { LocationInput } from "@/components/common/LocationInput";
-import { Breadcrumb } from "@/components/common/Breadcrumb";
+import { PageHeader } from "@/components/common/PageHeader";
 import type { Relationship } from "@/types/relationship";
 
 import { QualifierSelect } from "@/components/common/QualifierSelect";
@@ -334,7 +335,8 @@ export function PersonDetailPage() {
   // ── Edit mode ──────────────────────────────────────────────────────────────
   if (editing) {
     return (
-      <div className="space-y-4 max-w-2xl">
+      <div className="h-full overflow-auto">
+      <div className="space-y-4 max-w-5xl mx-auto w-full">
         {/* Sticky top bar */}
         <div className="flex items-center justify-between sticky top-0 bg-background py-2 z-10 border-b">
           <p className="font-semibold">Editing {name}</p>
@@ -414,13 +416,15 @@ export function PersonDetailPage() {
 
         {updateMut.error && <p className="text-sm text-destructive">{updateMut.error instanceof Error ? updateMut.error.message : "Failed to save"}</p>}
       </div>
+      </div>
     );
   }
 
   // ── View mode ──────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5 max-w-2xl">
-      <Breadcrumb items={[
+    <div className="h-full overflow-auto">
+    <div className="space-y-5 max-w-5xl mx-auto w-full">
+      <PageHeader items={[
         { label: "Dashboard",           href: "/dashboard" },
         { label: tree?.name ?? "Tree",  href: base },
         { label: "People",              href: `${base}/people` },
@@ -664,8 +668,8 @@ export function PersonDetailPage() {
                           </Link>
                           {relDateRange(rel) && <span className="text-xs text-muted-foreground shrink-0">{relDateRange(rel)}</span>}
                           <div className="flex gap-1 shrink-0 ml-auto">
-                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => startRelEdit(rel)}>Edit</Button>
-                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => deleteRelMut.mutate(rel.id)}>Delete</Button>
+                            <EditIcon onClick={() => startRelEdit(rel)} />
+                            <DeleteIcon onClick={() => deleteRelMut.mutate(rel.id)} />
                           </div>
                         </div>
                       );
@@ -725,6 +729,7 @@ export function PersonDetailPage() {
           </form>
         </DialogContent>
       </Dialog>
+    </div>
     </div>
   );
 }

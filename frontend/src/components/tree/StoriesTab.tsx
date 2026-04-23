@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { DeleteIcon } from "@/components/common/ActionIcons";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { StoryEditor, extractMentionPersonIds } from "@/components/editor/StoryEditor";
 import { LocationInput } from "@/components/common/LocationInput";
@@ -229,7 +230,7 @@ export function StoriesTab({ treeId }: { treeId: string }) {
                   })}
                 </div>
               </div>
-              <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setConfirmDeleteId(s.id)} disabled={deleteMut.isPending}>Delete</Button>
+              <DeleteIcon onClick={() => setConfirmDeleteId(s.id)} disabled={deleteMut.isPending} />
             </div>
           ))}
         </div>

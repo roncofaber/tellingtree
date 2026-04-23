@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { EditIcon, DeleteIcon } from "@/components/common/ActionIcons";
 import { PickerMap } from "@/components/tree/PlacesMap";
 import type { Place } from "@/types/place";
 
@@ -510,8 +511,9 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
           )}
         </div>
       )}
+      <div className="border rounded-lg">
       <Table className="table-fixed w-full">
-        <TableHeader>
+        <TableHeader className="bg-muted/50 sticky top-0 z-10">
           <TableRow>
             <TableHead className="w-[38%]">Raw Location</TableHead>
             <TableHead className="w-[38%]">Geocoded To</TableHead>
@@ -569,6 +571,7 @@ function RawLocationsTab({ treeId }: { treeId: string }) {
           })}
         </TableBody>
       </Table>
+      </div>
       <GeocodeDialog raw={geocoding} treeId={treeId} onClose={() => setGeocoding(null)} />
     </div>
   );
@@ -718,8 +721,9 @@ export function PlacesManageTab({ treeId }: { treeId: string }) {
                 {search ? "No places match." : "No places yet. Link a location to a person to get started."}
               </p>
             ) : (
+              <div className="border rounded-lg">
               <Table>
-                <TableHeader>
+                <TableHeader className="bg-muted/50">
                   <TableRow>
                     <TableHead>Place</TableHead>
                     <TableHead className="hidden md:table-cell">Coordinates</TableHead>
@@ -728,7 +732,6 @@ export function PlacesManageTab({ treeId }: { treeId: string }) {
                     <TableHead className="w-auto">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-
                 {byCountry.map(([country, countryPlaces]) => {
                   const collapsed = collapsedCountries.has(country);
                   return (
@@ -811,8 +814,8 @@ export function PlacesManageTab({ treeId }: { treeId: string }) {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                              <Button size="sm" variant="outline" onClick={() => setEditing(p)}>Edit</Button>
-                              <Button size="sm" variant="destructive" onClick={() => deleteMut.mutate(p.id)}>Delete</Button>
+                              <EditIcon onClick={() => setEditing(p)} />
+                              <DeleteIcon onClick={() => deleteMut.mutate(p.id)} />
                             </div>
                           </TableCell>
                         </TableRow>
@@ -821,6 +824,7 @@ export function PlacesManageTab({ treeId }: { treeId: string }) {
                   );
                 })}
               </Table>
+              </div>
             )}
           </div>
         </TabsContent>

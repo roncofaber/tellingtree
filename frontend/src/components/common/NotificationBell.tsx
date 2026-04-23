@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { Bell, Check } from "lucide-react";
 import { listNotifications, getUnreadCount, markRead, markAllRead, type Notification } from "@/api/notifications";
 
 export function NotificationBell() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);

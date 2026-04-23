@@ -2,8 +2,10 @@ import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { Sidebar } from "./Sidebar";
+import { NotificationBell } from "@/components/common/NotificationBell";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { Menu } from "lucide-react";
 
 export function Layout() {
   const [open, setOpen] = useState(false);
@@ -27,20 +29,26 @@ export function Layout() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="md:hidden flex items-center gap-2 p-4 border-b">
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
-              Menu
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
-              <Sidebar collapsed={false} />
-            </SheetContent>
-          </Sheet>
-          <span className="font-bold">TellingTree</span>
+        {/* Mobile header */}
+        <header className="md:hidden flex items-center justify-between p-3 border-b">
+          <div className="flex items-center gap-2">
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetTrigger className="flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+                <Menu className="h-4 w-4" />
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64 p-0">
+                <Sidebar collapsed={false} />
+              </SheetContent>
+            </Sheet>
+            <span className="font-bold text-sm">TellingTree</span>
+          </div>
+          <NotificationBell />
         </header>
 
-        <main className="flex-1 overflow-auto p-3 sm:p-6 animate-fade-in">
-          <Outlet />
+        <main className="flex-1 overflow-hidden animate-fade-in">
+          <div className="h-full w-full p-3 sm:p-6 flex flex-col">
+            <Outlet />
+          </div>
         </main>
       </div>
       <Toaster position="bottom-right" richColors closeButton />

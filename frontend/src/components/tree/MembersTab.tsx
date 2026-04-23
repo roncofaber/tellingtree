@@ -129,62 +129,64 @@ export function MembersTab({ treeId }: Props) {
         </Dialog>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Username</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead className="w-32">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {members?.map((member) => (
-            <TableRow key={member.id}>
-              <TableCell className="font-medium">{member.username || member.user_id.slice(0, 8)}</TableCell>
-              <TableCell>
-                <Badge variant={member.role === "owner" ? "default" : "secondary"}>{member.role === "owner" ? "Owner" : member.role}</Badge>
-              </TableCell>
-              <TableCell>
-                {member.role === "owner" ? (
-                  <span className="text-xs text-muted-foreground">—</span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={member.role}
-                      onValueChange={(newRole) => {
-                        if (newRole !== null) updateMut.mutate({ userId: member.user_id, newRole });
-                      }}
-                    >
-                      <SelectTrigger className="w-28 h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="viewer">Viewer</SelectItem>
-                        <SelectItem value="editor">Editor</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => removeMut.mutate(member.user_id)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-          {members?.length === 0 && (
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader className="bg-muted/50">
             <TableRow>
-              <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                No members yet. Invite family members to collaborate.
-              </TableCell>
+              <TableHead>Username</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead className="w-32">Actions</TableHead>
             </TableRow>
-          )}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {members?.map((member) => (
+              <TableRow key={member.id}>
+                <TableCell className="font-medium">{member.username || member.user_id.slice(0, 8)}</TableCell>
+                <TableCell>
+                  <Badge variant={member.role === "owner" ? "default" : "secondary"}>{member.role === "owner" ? "Owner" : member.role}</Badge>
+                </TableCell>
+                <TableCell>
+                  {member.role === "owner" ? (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={member.role}
+                        onValueChange={(newRole) => {
+                          if (newRole !== null) updateMut.mutate({ userId: member.user_id, newRole });
+                        }}
+                      >
+                        <SelectTrigger className="w-28 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="viewer">Viewer</SelectItem>
+                          <SelectItem value="editor">Editor</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => removeMut.mutate(member.user_id)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+            {members?.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                  No members yet. Invite family members to collaborate.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {/* Invite link generator */}
       <div className="border-t pt-4 space-y-2">

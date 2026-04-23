@@ -140,42 +140,44 @@ export function TreeHealthTab({ treeId }: { treeId: string }) {
         </div>
       )}
 
-      {issues.map((issue, i) => (
-        <div key={i} className="rounded-lg border">
-          <div className="flex items-center gap-2 px-4 py-3 bg-muted/30">
-            <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${issue.severity === "warning" ? "text-amber-500" : "text-muted-foreground"}`} />
-            <span className="text-sm font-medium">{issue.label}</span>
-            <Badge variant="secondary" className="ml-auto text-xs">{issue.persons.length}</Badge>
-            {issue.type === "duplicate" && issue.persons.length === 2 && (
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
-                onClick={() => setCompareIds([issue.persons[0].id, issue.persons[1].id])}>
-                Compare
-              </Button>
-            )}
-          </div>
-          <div className="px-4 py-2 max-h-[200px] overflow-y-auto">
-            <div className="space-y-0.5">
-              {issue.persons.slice(0, 20).map(p => {
-                const name = getFullName(p);
-                const year = p.birth_date?.slice(0, 4);
-                return (
-                  <Link
-                    key={p.id}
-                    to={`/trees/${treeSlug}/people/${p.id}`}
-                    className="flex items-center justify-between py-1 text-sm hover:text-primary transition-colors"
-                  >
-                    <span className="truncate">{name}</span>
-                    {year && <span className="text-xs text-muted-foreground ml-2 shrink-0">b. {year}</span>}
-                  </Link>
-                );
-              })}
-              {issue.persons.length > 20 && (
-                <p className="text-xs text-muted-foreground py-1">+{issue.persons.length - 20} more</p>
+      <div className="space-y-4">
+        {issues.map((issue, i) => (
+          <div key={i} className="rounded-lg border">
+            <div className="flex items-center gap-2 px-4 py-3 bg-muted/30">
+              <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${issue.severity === "warning" ? "text-amber-500" : "text-muted-foreground"}`} />
+              <span className="text-sm font-medium">{issue.label}</span>
+              <Badge variant="secondary" className="ml-auto text-xs">{issue.persons.length}</Badge>
+              {issue.type === "duplicate" && issue.persons.length === 2 && (
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
+                  onClick={() => setCompareIds([issue.persons[0].id, issue.persons[1].id])}>
+                  Compare
+                </Button>
               )}
             </div>
+            <div className="px-4 py-2 max-h-[200px] overflow-y-auto">
+              <div className="space-y-0.5">
+                {issue.persons.slice(0, 20).map(p => {
+                  const name = getFullName(p);
+                  const year = p.birth_date?.slice(0, 4);
+                  return (
+                    <Link
+                      key={p.id}
+                      to={`/trees/${treeSlug}/people/${p.id}`}
+                      className="flex items-center justify-between py-1 text-sm hover:text-primary transition-colors"
+                    >
+                      <span className="truncate">{name}</span>
+                      {year && <span className="text-xs text-muted-foreground ml-2 shrink-0">b. {year}</span>}
+                    </Link>
+                  );
+                })}
+                {issue.persons.length > 20 && (
+                  <p className="text-xs text-muted-foreground py-1">+{issue.persons.length - 20} more</p>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
+import { NotificationBell } from "@/components/common/NotificationBell";
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
@@ -67,11 +68,14 @@ export function DashboardPage() {
     return <ErrorMessage message={error instanceof Error ? error.message : "Failed to load trees"} />;
 
   return (
-    <div className="space-y-6">
+    <div className="h-full overflow-auto">
+    <div className="space-y-6 max-w-6xl mx-auto w-full">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Your Trees</h1>
-        <Dialog open={dialogOpen} onOpenChange={(o) => { if (!creating) setDialogOpen(o); }}>
-          <Button onClick={() => setDialogOpen(true)}>+ New Tree</Button>
+        <h1 className="text-xl font-bold">Your Trees</h1>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <Dialog open={dialogOpen} onOpenChange={(o) => { if (!creating) setDialogOpen(o); }}>
+            <Button onClick={() => setDialogOpen(true)}>+ New Tree</Button>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create a New Tree</DialogTitle>
@@ -136,6 +140,7 @@ export function DashboardPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {trees?.items.length === 0 ? (
@@ -186,6 +191,7 @@ export function DashboardPage() {
           })}
         </div>
       )}
+    </div>
     </div>
   );
 }

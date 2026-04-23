@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Breadcrumb } from "@/components/common/Breadcrumb";
+import { PageHeader } from "@/components/common/PageHeader";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getTree, updateTree, deleteTree } from "@/api/trees";
@@ -219,19 +219,19 @@ export function TreeManagePage() {
   if (isLoading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="flex flex-col h-full min-h-0 max-w-6xl mx-auto w-full gap-3">
       {/* Header */}
-      <div className="space-y-1">
-        <Breadcrumb items={[
+      <div className="space-y-1 shrink-0">
+        <PageHeader items={[
           { label: "Dashboard",          href: "/dashboard" },
           { label: tree?.name ?? "Tree", href: base },
           { label: "Settings" },
         ]} />
-        <h1 className="text-2xl font-bold">{tree?.name} — Settings</h1>
+        <h1 className="text-xl font-bold">{tree?.name} — Settings</h1>
       </div>
 
-      <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab") || "general"}>
-        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
+      <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab") || "general"} className="flex-1 flex flex-col min-h-0">
+        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start shrink-0">
           <TabsTrigger value="general" className="shrink-0">General</TabsTrigger>
           <TabsTrigger value="health" className="shrink-0">Health</TabsTrigger>
           <TabsTrigger value="graph" className="shrink-0">Graph</TabsTrigger>
@@ -243,7 +243,7 @@ export function TreeManagePage() {
         </TabsList>
 
         {/* ── General ── */}
-        <TabsContent value="general" className="space-y-4 mt-4">
+        <TabsContent value="general" className="space-y-4 mt-4 overflow-auto min-h-0">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -357,12 +357,12 @@ export function TreeManagePage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="health" className="mt-4">
+        <TabsContent value="health" className="mt-4 overflow-auto min-h-0">
           <TreeHealthTab treeId={treeId!} />
         </TabsContent>
 
         {/* ── Graph ── */}
-        <TabsContent value="graph" className="space-y-4 mt-4">
+        <TabsContent value="graph" className="space-y-4 mt-4 overflow-auto min-h-0">
           <Card>
             <CardContent className="pt-5 space-y-5">
               {(() => {
@@ -532,7 +532,7 @@ export function TreeManagePage() {
         </TabsContent>
 
         {/* ── Data ── */}
-        <TabsContent value="places" className="mt-4 space-y-4">
+        <TabsContent value="places" className="mt-4 space-y-4 overflow-auto min-h-0">
           <Card>
             <CardHeader><CardTitle className="text-base">Reset geocoding</CardTitle></CardHeader>
             <CardContent className="space-y-3">
@@ -557,11 +557,11 @@ export function TreeManagePage() {
           <PlacesManageTab treeId={treeId!} />
         </TabsContent>
 
-        <TabsContent value="relationships" className="mt-4">
+        <TabsContent value="relationships" className="mt-4 overflow-hidden min-h-0 flex flex-col">
           <RelationshipsTab treeId={treeId!} />
         </TabsContent>
 
-        <TabsContent value="data" className="space-y-4 mt-4">
+        <TabsContent value="data" className="space-y-4 mt-4 overflow-auto min-h-0">
           <Card>
             <CardHeader><CardTitle className="text-base">GEDCOM</CardTitle></CardHeader>
             <CardContent className="space-y-3">
@@ -593,12 +593,12 @@ export function TreeManagePage() {
         </TabsContent>
 
         {/* ── Trash ── */}
-        <TabsContent value="trash" className="mt-4">
+        <TabsContent value="trash" className="mt-4 overflow-auto min-h-0">
           <TrashTab treeId={treeId!} />
         </TabsContent>
 
         {/* ── Advanced ── */}
-        <TabsContent value="advanced" className="space-y-4 mt-4">
+        <TabsContent value="advanced" className="space-y-4 mt-4 overflow-auto min-h-0">
           <Card className="border-destructive/40">
             <CardHeader><CardTitle className="text-base text-destructive">Danger zone</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between">

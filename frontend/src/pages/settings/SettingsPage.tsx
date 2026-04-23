@@ -63,7 +63,8 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-lg">
+    <div className="h-full overflow-auto">
+    <div className="space-y-6 max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold">Settings</h1>
 
       <Card>
@@ -130,6 +131,7 @@ export function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+    </div>
     </div>
   );
 }

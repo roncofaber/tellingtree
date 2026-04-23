@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
-import { Breadcrumb } from "@/components/common/Breadcrumb";
+import { PageHeader } from "@/components/common/PageHeader";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { StoryEditor, extractMentionPersonIds } from "@/components/editor/StoryEditor";
 import { StoryAttachments } from "@/components/tree/StoryAttachments";
@@ -374,8 +374,9 @@ export function StoryDetailPage() {
   };
 
   return (
-    <div className="space-y-4 max-w-3xl">
-      <Breadcrumb items={[
+    <div className="h-full overflow-auto">
+    <div className="space-y-4 max-w-4xl mx-auto w-full">
+      <PageHeader items={[
         { label: "Dashboard",           href: "/dashboard" },
         { label: tree?.name ?? "Tree",  href: base },
         { label: "Stories",             href: `${base}/stories` },
@@ -487,6 +488,7 @@ export function StoryDetailPage() {
           </div>
         </>
       )}
+    </div>
     </div>
   );
 }

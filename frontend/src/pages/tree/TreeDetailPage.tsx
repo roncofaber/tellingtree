@@ -2,9 +2,8 @@ import { useMemo, useState, useCallback, useEffect, useRef, lazy, Suspense } fro
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake, AlertTriangle, Search, UserPlus, PenLine } from "lucide-react";
 import { AddPersonDialog } from "@/components/common/AddPersonDialog";
-import { NotificationBell } from "@/components/common/NotificationBell";
+import { PageHeader } from "@/components/common/PageHeader";
 import { genderColor, getFullName } from "@/lib/person";
-import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { getTree, searchTree, type SearchResult } from "@/api/trees";
 import { listPersons } from "@/api/persons";
@@ -524,64 +523,64 @@ export function TreeDetailPage() {
   const tabLabel = TAB_LABELS[activeTab];
 
   return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <Breadcrumb items={[
+    <div className="flex flex-col h-full min-h-0 gap-3">
+      <PageHeader
+        items={[
           { label: "Dashboard", href: "/dashboard" },
           ...(tabLabel
             ? [{ label: tree.name, href: base }, { label: tabLabel }]
             : [{ label: tree.name }]
           ),
-        ]} />
-        <div className="flex items-center gap-2">
-          {/* Search */}
-          <div ref={searchRef} className="relative">
-            <div className="flex items-center gap-1 border rounded-md px-2 bg-background">
-              <Search className="h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => handleSearchChange(e.target.value)}
-                onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
-                placeholder="Search… (Ctrl+K)"
-                className="h-8 w-32 sm:w-40 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              />
-            </div>
-            {searchOpen && searchResults.length > 0 && (
-              <div className="absolute top-full mt-1 right-0 z-50 w-64 rounded-lg border bg-popover shadow-lg overflow-hidden">
-                {searchResults.map(r => (
-                  <Link
-                    key={r.id}
-                    to={`${base}/${r.type === "person" ? "people" : "stories"}/${r.id}`}
-                    className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
-                    onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
-                  >
-                    {r.type === "person"
-                      ? <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      : <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    }
-                    <span className="font-medium truncate">{r.label}</span>
-                    {r.detail && <span className="text-xs text-muted-foreground ml-auto shrink-0">{r.detail}</span>}
-                  </Link>
-                ))}
+        ]}
+        actions={
+          <>
+            {/* Search */}
+            <div ref={searchRef} className="relative hidden sm:block">
+              <div className="flex items-center gap-1 border border-input rounded-md px-2 bg-background">
+                <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => handleSearchChange(e.target.value)}
+                  onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
+                  placeholder="Search… (Ctrl+K)"
+                  className="h-7 w-32 sm:w-36 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                />
               </div>
-            )}
-          </div>
-          <NotificationBell />
-          <button
-            onClick={() => navigate(`${base}/manage`)}
-            title="Tree settings"
-            className="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+              {searchOpen && searchResults.length > 0 && (
+                <div className="absolute top-full mt-1 right-0 z-50 w-64 rounded-lg border bg-popover shadow-lg overflow-hidden">
+                  {searchResults.map(r => (
+                    <Link
+                      key={r.id}
+                      to={`${base}/${r.type === "person" ? "people" : "stories"}/${r.id}`}
+                      className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
+                      onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
+                    >
+                      {r.type === "person"
+                        ? <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        : <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      }
+                      <span className="font-medium truncate">{r.label}</span>
+                      {r.detail && <span className="text-xs text-muted-foreground ml-auto shrink-0">{r.detail}</span>}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => navigate(`${base}/manage`)}
+              title="Tree settings"
+              className="shrink-0 flex items-center justify-center h-7 w-7 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+          </>
+        }
+      />
 
-      {/* Tabs — scrollable so they never overflow */}
-      <Tabs value={activeTab} onValueChange={(v) => navigate(v === "home" ? base : `${base}/${v}`, { replace: true })}>
-        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={(v) => navigate(v === "home" ? base : `${base}/${v}`, { replace: true })} className="flex-1 flex flex-col min-h-0">
+        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start shrink-0">
           <TabsTrigger value="home"    className="shrink-0">Home</TabsTrigger>
           <TabsTrigger value="graph"   className="shrink-0">Graph</TabsTrigger>
           <TabsTrigger value="map"     className="shrink-0">Map</TabsTrigger>
@@ -590,23 +589,31 @@ export function TreeDetailPage() {
           <TabsTrigger value="media"   className="shrink-0">Media</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="home">
-          <DashboardTab treeId={treeId} treeSlug={treeSlug!} />
+        <TabsContent value="home" className="overflow-auto min-h-0">
+          <div className="max-w-7xl mx-auto w-full">
+            <DashboardTab treeId={treeId} treeSlug={treeSlug!} />
+          </div>
         </TabsContent>
-        <TabsContent value="graph">
+        <TabsContent value="graph" className="overflow-hidden min-h-0">
           <Suspense fallback={<LoadingSpinner />}><GraphTab treeId={treeId} /></Suspense>
         </TabsContent>
-        <TabsContent value="map">
+        <TabsContent value="map" className="overflow-hidden min-h-0">
           <Suspense fallback={<LoadingSpinner />}><MapTab treeId={treeId} /></Suspense>
         </TabsContent>
-        <TabsContent value="people">
-          <PersonsTab treeId={treeId} />
+        <TabsContent value="people" className="overflow-hidden min-h-0 flex flex-col">
+          <div className="max-w-6xl mx-auto w-full flex flex-col min-h-0 flex-1">
+            <PersonsTab treeId={treeId} />
+          </div>
         </TabsContent>
-        <TabsContent value="stories">
-          <Suspense fallback={<LoadingSpinner />}><StoriesTab treeId={treeId} /></Suspense>
+        <TabsContent value="stories" className="overflow-auto min-h-0">
+          <div className="max-w-6xl mx-auto w-full">
+            <Suspense fallback={<LoadingSpinner />}><StoriesTab treeId={treeId} /></Suspense>
+          </div>
         </TabsContent>
-        <TabsContent value="media">
-          <MediaTab treeId={treeId} />
+        <TabsContent value="media" className="overflow-auto min-h-0">
+          <div className="max-w-6xl mx-auto w-full">
+            <MediaTab treeId={treeId} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
