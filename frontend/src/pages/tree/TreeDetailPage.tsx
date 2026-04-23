@@ -17,7 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { PlacesMap } from "@/components/tree/PlacesMap";
-import { PersonsTab }       from "@/components/tree/PersonsTab";
+import { PeopleTabWrapper } from "@/components/tree/PeopleTabWrapper";
 import { MediaTab }         from "@/components/tree/MediaTab";
 
 const GraphTab  = lazy(() => import("@/components/tree/GraphTab").then(m => ({ default: m.GraphTab })));
@@ -602,7 +602,7 @@ export function TreeDetailPage() {
         </TabsContent>
         <TabsContent value="people" className="overflow-hidden min-h-0 flex flex-col">
           <div className="max-w-6xl mx-auto w-full flex flex-col min-h-0 flex-1">
-            <PersonsTab treeId={treeId} />
+            <PeopleTabWrapper treeId={treeId} />
           </div>
         </TabsContent>
         <TabsContent value="stories" className="overflow-auto min-h-0">

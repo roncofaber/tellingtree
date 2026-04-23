@@ -13,6 +13,21 @@ export interface RegistrationInvite {
   created_by: string | null;
 }
 
+export interface AdminStats {
+  users_total: number;
+  users_pending: number;
+  users_active: number;
+  users_superadmin: number;
+  trees_total: number;
+  trees_public: number;
+  invites_outstanding: number;
+  invites_used: number;
+}
+
+export function getAdminStats() {
+  return apiClient.get<AdminStats>("/admin/stats");
+}
+
 export function listRegistrationInvites() {
   return apiClient.get<RegistrationInvite[]>("/admin/registration-invites");
 }
@@ -39,6 +54,14 @@ export function approveUser(userId: string) {
 
 export function rejectUser(userId: string) {
   return apiClient.put<User>(`/admin/users/${userId}/reject`, {});
+}
+
+export function promoteUser(userId: string) {
+  return apiClient.put<User>(`/admin/users/${userId}/promote`, {});
+}
+
+export function demoteUser(userId: string) {
+  return apiClient.put<User>(`/admin/users/${userId}/demote`, {});
 }
 
 export function generateResetToken(userId: string) {

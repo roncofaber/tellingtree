@@ -26,7 +26,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { MembersTab } from "@/components/tree/MembersTab";
 import { TrashTab } from "@/components/tree/TrashTab";
 import { PlacesManageTab } from "@/components/tree/PlacesManageTab";
-import { RelationshipsTab } from "@/components/tree/RelationshipsTab";
+
 import { TreeHealthTab } from "@/components/tree/TreeHealthTab";
 
 const PREVIEW_DATA: f3.Data = [
@@ -292,7 +292,7 @@ export function TreeManagePage() {
           <TabsTrigger value="health" className="shrink-0">Health</TabsTrigger>
           <TabsTrigger value="graph" className="shrink-0">Graph</TabsTrigger>
           <TabsTrigger value="places" className="shrink-0">Places</TabsTrigger>
-          <TabsTrigger value="relationships" className="shrink-0">Relationships</TabsTrigger>
+
           <TabsTrigger value="data" className="shrink-0">Data</TabsTrigger>
           <TabsTrigger value="trash" className="shrink-0">Trash</TabsTrigger>
           <TabsTrigger value="advanced" className="shrink-0">Advanced</TabsTrigger>
@@ -641,10 +641,6 @@ export function TreeManagePage() {
             </CardContent>
           </Card>
           <PlacesManageTab treeId={treeId!} />
-        </TabsContent>
-
-        <TabsContent value="relationships" className="mt-4 overflow-hidden min-h-0 flex flex-col">
-          <RelationshipsTab treeId={treeId!} />
         </TabsContent>
 
         <TabsContent value="data" className="space-y-4 mt-4 overflow-auto min-h-0">

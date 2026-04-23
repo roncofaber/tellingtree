@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listPersons, deletePerson } from "@/api/persons";
+import { listRelationships } from "@/api/relationships";
 import { EditIcon, DeleteIcon } from "@/components/common/ActionIcons";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { queryKeys } from "@/lib/queryKeys";
@@ -39,6 +40,7 @@ export function PersonsTab({ treeId }: { treeId: string }) {
   // Filter state
   const [search,  setSearch]  = useState("");
   const [sexFilter, setSexFilter] = useState<string>("all");
+  const [livingFilter, setLivingFilter] = useState<string>("all");
   const [sort,    setSort]    = useState<SortKey>("name-asc");
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -48,6 +50,20 @@ export function PersonsTab({ treeId }: { treeId: string }) {
     queryKey: queryKeys.persons.full(treeId),
     queryFn:  () => listPersons(treeId, 0, 50000),
   });
+
+  const { data: relsData } = useQuery({
+    queryKey: queryKeys.relationships.full(treeId),
+    queryFn: () => listRelationships(treeId, 0, 50000),
+  });
+
+  const connectionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of relsData?.items ?? []) {
+      counts.set(r.person_a_id, (counts.get(r.person_a_id) ?? 0) + 1);
+      counts.set(r.person_b_id, (counts.get(r.person_b_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [relsData]);
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deletePerson(treeId, id),
@@ -71,8 +87,10 @@ export function PersonsTab({ treeId }: { treeId: string }) {
       return name.includes(q);
     });
     if (sexFilter !== "all") items = items.filter((p) => (p.gender ?? "unknown") === sexFilter);
+    if (livingFilter === "living") items = items.filter((p) => p.is_living === true);
+    if (livingFilter === "deceased") items = items.filter((p) => p.is_living === false);
     return sortPersons(items, sort);
-  }, [data, search, sexFilter, sort]);
+  }, [data, search, sexFilter, livingFilter, sort]);
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -96,6 +114,16 @@ export function PersonsTab({ treeId }: { treeId: string }) {
               <SelectItem value="male">Male</SelectItem>
               <SelectItem value="female">Female</SelectItem>
               <SelectItem value="unknown">Unknown</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={livingFilter} onValueChange={(v) => { if (v !== null) setLivingFilter(v); }}>
+            <SelectTrigger className="h-8 w-36">
+              <span className="text-sm">{livingFilter === "all" ? "All status" : livingFilter === "living" ? "Living" : "Deceased"}</span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="living">Living</SelectItem>
+              <SelectItem value="deceased">Deceased</SelectItem>
             </SelectContent>
           </Select>
           <Select value={sort} onValueChange={(v) => { if (v !== null) setSort(v as SortKey); }}>
@@ -124,9 +152,10 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             <col className="w-[25%]" />
             <col className="hidden sm:table-column w-[15%]" />
             <col className="hidden sm:table-column w-[15%]" />
-            <col className="hidden md:table-column w-[10%]" />
-            <col className="hidden md:table-column w-[20%]" />
-            <col className="w-[15%]" />
+            <col className="hidden md:table-column w-[8%]" />
+            <col className="hidden md:table-column w-[15%]" />
+            <col className="hidden lg:table-column w-[8%]" />
+            <col className="w-[14%]" />
           </colgroup>
           <TableHeader className="bg-muted/50">
             <TableRow>
@@ -135,6 +164,7 @@ export function PersonsTab({ treeId }: { treeId: string }) {
               <TableHead className="hidden sm:table-cell">Died</TableHead>
               <TableHead className="hidden md:table-cell">Sex</TableHead>
               <TableHead className="hidden md:table-cell">Occupation</TableHead>
+              <TableHead className="hidden lg:table-cell">Links</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -145,9 +175,10 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             <col className="w-[25%]" />
             <col className="hidden sm:table-column w-[15%]" />
             <col className="hidden sm:table-column w-[15%]" />
-            <col className="hidden md:table-column w-[10%]" />
-            <col className="hidden md:table-column w-[20%]" />
-            <col className="w-[15%]" />
+            <col className="hidden md:table-column w-[8%]" />
+            <col className="hidden md:table-column w-[15%]" />
+            <col className="hidden lg:table-column w-[8%]" />
+            <col className="w-[14%]" />
           </colgroup>
           <TableBody>
           {filtered.map((p) => {
@@ -166,6 +197,7 @@ export function PersonsTab({ treeId }: { treeId: string }) {
                 <TableCell className="text-sm hidden sm:table-cell">{died ?? "—"}</TableCell>
                 <TableCell className="text-sm capitalize hidden md:table-cell">{p.gender ?? "—"}</TableCell>
                 <TableCell className="text-sm hidden md:table-cell">{p.occupation ?? "—"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">{connectionCounts.get(p.id) ?? 0}</TableCell>
                 <TableCell>
                   <div className="flex gap-1.5">
                     <EditIcon href={`/trees/${treeSlug}/people/${p.id}`} />
@@ -177,8 +209,8 @@ export function PersonsTab({ treeId }: { treeId: string }) {
           })}
           {filtered.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                {search || sexFilter !== "all" ? "No people match the current filters." : "No people yet."}
+              <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                {search || sexFilter !== "all" || livingFilter !== "all" ? "No people match the current filters." : "No people yet."}
               </TableCell>
             </TableRow>
           )}
