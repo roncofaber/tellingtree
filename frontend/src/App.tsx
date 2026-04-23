@@ -13,6 +13,8 @@ import { PersonDetailPage } from "@/pages/tree/PersonDetailPage";
 import { StoryDetailPage } from "@/pages/tree/StoryDetailPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { InvitePage } from "@/pages/InvitePage";
 
 const queryClient = new QueryClient({
@@ -27,9 +29,11 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="/login"    element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/register/:token" element={<RegisterPage />} />
+            <Route path="/login"               element={<LoginPage />} />
+            <Route path="/register"            element={<RegisterPage />} />
+            <Route path="/register/:token"     element={<RegisterPage />} />
+            <Route path="/forgot-password"     element={<ForgotPasswordPage />} />
+            <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
             <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<DashboardPage />} />

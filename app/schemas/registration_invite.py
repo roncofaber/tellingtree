@@ -30,3 +30,7 @@ class RegistrationInvitePublic(BaseModel):
     email: str | None = None
     expired: bool = False
     used: bool = False
+
+
+class PasswordResetUrlResponse(BaseModel):
+    url: str

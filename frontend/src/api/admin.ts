@@ -40,3 +40,11 @@ export function approveUser(userId: string) {
 export function rejectUser(userId: string) {
   return apiClient.put<User>(`/admin/users/${userId}/reject`, {});
 }
+
+export function generateResetToken(userId: string) {
+  return apiClient.post<{ url: string }>(`/admin/users/${userId}/reset-token`, {});
+}
+
+export function deleteUser(userId: string) {
+  return apiClient.delete<void>(`/admin/users/${userId}`);
+}

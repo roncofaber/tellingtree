@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { PasswordFields, passwordStrength, MIN_PASSWORD_SCORE } from "@/components/common/PasswordFields";
 
 export function RegisterPage() {
   const { register } = useAuth();
@@ -16,6 +17,7 @@ export function RegisterPage() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -99,6 +101,7 @@ export function RegisterPage() {
               username={username} setUsername={setUsername}
               fullName={fullName} setFullName={setFullName}
               password={password} setPassword={setPassword}
+              confirm={confirm} setConfirm={setConfirm}
               error={error} loading={loading}
               onSubmit={handleSubmit}
               emailLocked={false}
@@ -153,6 +156,7 @@ export function RegisterPage() {
             username={username} setUsername={setUsername}
             fullName={fullName} setFullName={setFullName}
             password={password} setPassword={setPassword}
+            confirm={confirm} setConfirm={setConfirm}
             error={error} loading={loading}
             onSubmit={handleSubmit}
             emailLocked={!!inviteInfo?.email}
@@ -168,12 +172,16 @@ interface FormProps {
   username: string; setUsername: (v: string) => void;
   fullName: string; setFullName: (v: string) => void;
   password: string; setPassword: (v: string) => void;
+  confirm: string; setConfirm: (v: string) => void;
   error: string; loading: boolean;
   onSubmit: (e: FormEvent) => void;
   emailLocked: boolean;
 }
 
 function RegisterForm(p: FormProps) {
+  const strength = passwordStrength(p.password);
+  const ready = strength.score >= MIN_PASSWORD_SCORE && p.password === p.confirm;
+
   return (
     <form onSubmit={p.onSubmit} className="space-y-4">
       {p.error && <p className="text-sm text-destructive">{p.error}</p>}
@@ -192,13 +200,12 @@ function RegisterForm(p: FormProps) {
         <Label htmlFor="fullName">Full Name</Label>
         <Input id="fullName" value={p.fullName} onChange={(e) => p.setFullName(e.target.value)} />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
-        <Input id="password" type="password" value={p.password}
-          onChange={(e) => p.setPassword(e.target.value)} required minLength={8} />
-        <p className="text-xs text-muted-foreground">At least 8 characters.</p>
-      </div>
-      <Button type="submit" className="w-full" disabled={p.loading}>
+      <PasswordFields
+        password={p.password} confirm={p.confirm}
+        onPasswordChange={p.setPassword} onConfirmChange={p.setConfirm}
+        disabled={p.loading}
+      />
+      <Button type="submit" className="w-full" disabled={p.loading || !ready}>
         {p.loading ? "Creating account..." : "Create account"}
       </Button>
       <p className="text-center text-sm text-muted-foreground">

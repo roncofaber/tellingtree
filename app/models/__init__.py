@@ -1,6 +1,7 @@
 from app.models.audit import AuditLog
 from app.models.invite import TreeInvite
 from app.models.place import Place
+from app.models.password_reset import PasswordResetToken
 from app.models.refresh_session import RefreshSession
 from app.models.registration_invite import RegistrationInvite
 from app.models.user import User
@@ -16,6 +17,7 @@ __all__ = [
     "AuditLog",
     "TreeInvite",
     "Place",
+    "PasswordResetToken",
     "RefreshSession",
     "RegistrationInvite",
     "User",

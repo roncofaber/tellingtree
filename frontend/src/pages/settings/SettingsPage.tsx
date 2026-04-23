@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { UserAvatar, userInitials } from "@/components/common/UserAvatar";
+import { PasswordFields, passwordStrength, MIN_PASSWORD_SCORE } from "@/components/common/PasswordFields";
 
 export function SettingsPage() {
   const { user, refreshUser, logout } = useAuth();
@@ -21,6 +22,7 @@ export function SettingsPage() {
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const [deletePassword, setDeletePassword] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -42,6 +44,7 @@ export function SettingsPage() {
     onSuccess: () => {
       setCurrentPassword("");
       setNewPassword("");
+      setConfirmPassword("");
       toast.success("Password changed. Logging you out…");
       setTimeout(() => logout(), 2000);
     },
@@ -169,12 +172,16 @@ export function SettingsPage() {
               <Label>Current Password</Label>
               <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required disabled={passwordMut.isPending} />
             </div>
-            <div className="space-y-2">
-              <Label>New Password</Label>
-              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} disabled={passwordMut.isPending} />
-              <p className="text-xs text-muted-foreground">At least 8 characters.</p>
-            </div>
-            <Button type="submit" disabled={passwordMut.isPending}>
+            <PasswordFields
+              password={newPassword} confirm={confirmPassword}
+              onPasswordChange={setNewPassword} onConfirmChange={setConfirmPassword}
+              passwordLabel="New Password"
+              disabled={passwordMut.isPending}
+            />
+            <Button type="submit"
+              disabled={passwordMut.isPending
+                || passwordStrength(newPassword).score < MIN_PASSWORD_SCORE
+                || newPassword !== confirmPassword}>
               {passwordMut.isPending ? "Changing…" : "Change Password"}
             </Button>
           </form>

@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     max_gedcom_size_bytes: int = 50 * 1024 * 1024  # 50MB for GEDCOM files
     storage_path: str = "storage/media"
 
+    # Email (Brevo SMTP relay — leave blank to disable email features)
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_name: str = "TellingTree"
+    smtp_from_email: str = ""
+    app_url: str = "http://localhost"  # Base URL for reset links
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @model_validator(mode="after")

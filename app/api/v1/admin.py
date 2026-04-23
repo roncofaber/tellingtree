@@ -8,10 +8,13 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_admin_user
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_db
+from app.models.password_reset import PasswordResetToken
 from app.models.refresh_session import RefreshSession
 from app.models.registration_invite import RegistrationInvite
+from app.models.tree import Tree
 from app.models.user import User
 from app.schemas.registration_invite import (
+    PasswordResetUrlResponse,
     RegistrationInviteCreate,
     RegistrationInviteResponse,
 )
@@ -95,3 +98,53 @@ def reject_user(user_id: uuid.UUID, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.post("/users/{user_id}/reset-token", response_model=PasswordResetUrlResponse)
+def generate_reset_token(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """Generate a password reset link for a user. Admin copies and shares it manually."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise NotFoundError("User not found")
+
+    # Invalidate any existing unused tokens
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used_at.is_(None),
+    ).delete()
+
+    token = secrets.token_urlsafe(32)
+    db.add(PasswordResetToken(
+        user_id=user.id,
+        token=token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    ))
+    db.commit()
+
+    from app.config import settings
+    return PasswordResetUrlResponse(url=f"{settings.app_url}/reset-password/{token}")
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(
+    user_id: uuid.UUID,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    if user_id == admin.id:
+        raise BadRequestError("Cannot delete your own account from the admin panel. Use Settings.")
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise NotFoundError("User not found")
+    if user.is_superadmin:
+        raise BadRequestError("Cannot delete a superadmin.")
+    owned = db.query(Tree).filter(Tree.owner_id == user.id).first()
+    if owned:
+        raise BadRequestError(
+            f"User owns tree \"{owned.name}\". Transfer or delete it first."
+        )
+    db.delete(user)
+    db.commit()

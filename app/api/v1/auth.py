@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -16,11 +17,13 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
+from app.models.password_reset import PasswordResetToken
 from app.models.refresh_session import RefreshSession
 from app.models.registration_invite import RegistrationInvite
 from app.models.user import User
 from app.schemas.registration_invite import RegistrationInvitePublic
-from app.schemas.user import LoginRequest, RefreshRequest, Token, UserCreate, UserResponse
+from app.schemas.user import LoginRequest, PasswordChange, RefreshRequest, Token, UserCreate, UserResponse
+from app.services.email import send_password_reset
 
 
 def _new_session(db: Session, user: User) -> str:
@@ -234,3 +237,62 @@ def logout(
                 db.query(RefreshSession).filter(RefreshSession.jti == jti).delete()
                 db.commit()
     _clear_refresh_cookie(response)
+
+
+# ── Password reset ─────────────────────────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/forgot-password", status_code=204)
+def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    # Always return 204 — never reveal whether the email exists.
+    from datetime import timedelta
+    user = db.query(User).filter(User.email == data.email, User.is_active.is_(True)).first()
+    if user and user.is_approved:
+        # Invalidate any existing unused tokens for this user
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        ).delete()
+        token = secrets.token_urlsafe(32)
+        db.add(PasswordResetToken(
+            user_id=user.id,
+            token=token,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        ))
+        db.commit()
+        reset_url = f"{settings.app_url}/reset-password/{token}"
+        send_password_reset(user.email, reset_url)
+
+
+@router.post("/reset-password", status_code=204)
+def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    record = db.query(PasswordResetToken).filter(PasswordResetToken.token == data.token).first()
+    if record is None or record.is_used or record.is_expired:
+        raise BadRequestError("Invalid or expired reset link")
+
+    # Validate password strength (reuse the same validator as PasswordChange)
+    try:
+        PasswordChange.model_validate({"current_password": "x", "new_password": data.new_password})
+    except Exception:
+        raise BadRequestError(
+            "Password must be at least 8 characters and contain at least one "
+            "uppercase letter, number, or symbol."
+        )
+
+    user = db.query(User).filter(User.id == record.user_id).first()
+    if user is None:
+        raise BadRequestError("User not found")
+
+    user.password_hash = hash_password(data.new_password)
+    user.token_version += 1
+    db.query(RefreshSession).filter(RefreshSession.user_id == user.id).delete()
+    record.used_at = datetime.now(timezone.utc)
+    db.commit()
