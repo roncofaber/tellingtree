@@ -9,6 +9,7 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
     password: str = Field(..., min_length=8, max_length=128)
     full_name: str | None = Field(None, max_length=255)
+    invite_token: str | None = Field(None, max_length=64)
 
 
 class UserUpdate(BaseModel):
@@ -22,7 +23,10 @@ class UserResponse(BaseModel):
     username: str
     full_name: str | None
     is_active: bool
+    is_approved: bool = False
+    is_superadmin: bool = False
     created_at: datetime
+    has_avatar: bool = False
 
     model_config = {"from_attributes": True}
 

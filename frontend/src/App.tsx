@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
@@ -12,6 +12,7 @@ import { TreeManagePage } from "@/pages/tree/TreeManagePage";
 import { PersonDetailPage } from "@/pages/tree/PersonDetailPage";
 import { StoryDetailPage } from "@/pages/tree/StoryDetailPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
+import { AdminPage } from "@/pages/AdminPage";
 import { InvitePage } from "@/pages/InvitePage";
 
 const queryClient = new QueryClient({
@@ -25,8 +26,10 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
+            <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login"    element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/register/:token" element={<RegisterPage />} />
 
             <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<DashboardPage />} />
@@ -47,6 +50,7 @@ function App() {
               <Route path="/trees/:treeSlug/stories/:storyId"  element={<StoryDetailPage />} />
 
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/admin"    element={<AdminPage />} />
               <Route path="/invite/:token" element={<InvitePage />} />
             </Route>
 

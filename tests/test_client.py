@@ -287,43 +287,34 @@ class TestTokenRevocation:
 
 
 class TestTreeTransfer:
-    def test_transfer_ownership(self, api_client):
+    def test_transfer_ownership(self, api_client, make_user):
         api_client.auth.register(
             email="owner@example.com", username="owner", password="password123"
         )
         api_client.auth.login(username="owner", password="password123")
         tree = api_client.trees.create(name="Shared Tree")
 
-        api_client.auth.register(
-            email="member@example.com", username="member", password="password123"
-        )
+        member = make_user(email="member@example.com", username="member", password="password123")
         api_client.trees.add_member(tree.id, username="member", role="editor")
 
-        api_client.auth.login(username="member", password="password123")
-        member_me = api_client.users.get_me()
+        transferred = api_client.trees.transfer(tree.id, str(member.id))
+        assert str(transferred.owner_id) == str(member.id)
 
-        api_client.auth.login(username="owner", password="password123")
-        transferred = api_client.trees.transfer(tree.id, member_me.id)
-        assert transferred.owner_id == member_me.id
-
-    def test_non_owner_cannot_transfer(self, api_client):
+    def test_non_owner_cannot_transfer(self, api_client, make_user):
         api_client.auth.register(
             email="owner2@example.com", username="owner2", password="password123"
         )
         api_client.auth.login(username="owner2", password="password123")
         tree = api_client.trees.create(name="My Tree")
 
-        api_client.auth.register(
-            email="editor2@example.com", username="editor2", password="password123"
-        )
+        editor = make_user(email="editor2@example.com", username="editor2", password="password123")
         api_client.trees.add_member(tree.id, username="editor2", role="admin")
 
         api_client.auth.login(username="editor2", password="password123")
-        editor_me = api_client.users.get_me()
 
         import httpx
         with pytest.raises(httpx.HTTPStatusError):
-            api_client.trees.transfer(tree.id, editor_me.id)
+            api_client.trees.transfer(tree.id, str(editor.id))
 
 
 class TestAccountDeletion:
@@ -345,29 +336,23 @@ class TestAccountDeletion:
         with pytest.raises(httpx.HTTPStatusError):
             authed_client.users.delete_account(password="sdkpassword123")
 
-    def test_delete_after_transfer(self, api_client):
+    def test_delete_after_transfer(self, api_client, make_user):
         api_client.auth.register(
             email="leaving@example.com", username="leaving", password="password123"
         )
         api_client.auth.login(username="leaving", password="password123")
         tree = api_client.trees.create(name="Family Tree")
 
-        api_client.auth.register(
-            email="staying@example.com", username="staying", password="password123"
-        )
+        staying = make_user(email="staying@example.com", username="staying", password="password123")
         api_client.trees.add_member(tree.id, username="staying", role="editor")
 
-        api_client.auth.login(username="staying", password="password123")
-        staying_me = api_client.users.get_me()
-
-        api_client.auth.login(username="leaving", password="password123")
-        api_client.trees.transfer(tree.id, staying_me.id)
+        api_client.trees.transfer(tree.id, str(staying.id))
         api_client.users.delete_account(password="password123")
 
         # Tree still exists, now owned by "staying"
         api_client.auth.login(username="staying", password="password123")
         fetched = api_client.trees.get(tree.id)
-        assert fetched.owner_id == staying_me.id
+        assert str(fetched.owner_id) == str(staying.id)
 
 
 class TestTags:

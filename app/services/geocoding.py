@@ -125,11 +125,11 @@ def preprocess_query(raw: str) -> str:
 
 
 def _rate_limit():
-    """Ensure at least 1 second between Nominatim requests."""
+    """Ensure at least 1.5 seconds between Nominatim requests (policy: 1/sec)."""
     global _last_request_time
     with _last_request_lock:
         now = time.monotonic()
-        wait = 1.0 - (now - _last_request_time)
+        wait = 1.5 - (now - _last_request_time)
         if wait > 0:
             time.sleep(wait)
         _last_request_time = time.monotonic()

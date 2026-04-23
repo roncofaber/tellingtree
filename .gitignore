@@ -6,10 +6,18 @@ build/
 .eggs/
 
 .env
+.env.production
+.env.local
+.env.*.local
 .venv/
 venv/
 
 storage/media/
+storage/avatars/
+
+# Deployment installers
+*.deb
+*.rpm
 
 *.db
 *.sqlite3

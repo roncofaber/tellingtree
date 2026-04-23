@@ -16,4 +16,5 @@ export interface TreeMember {
   role: string;
   created_at: string;
   username: string | null;
+  has_avatar: boolean;
 }

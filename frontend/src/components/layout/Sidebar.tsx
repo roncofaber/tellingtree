@@ -1,12 +1,18 @@
 import { useState } from "react";
-import { NavLink, Link, useLocation } from "react-router-dom";
+import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Settings, TreePine, Plus, LogOut, Search, Sun, Moon, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Settings, TreePine, Plus, LogOut, Search, Sun, Moon, PanelLeftClose, PanelLeftOpen, ChevronsUpDown, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { listTrees } from "@/api/trees";
 import { queryKeys } from "@/lib/queryKeys";
 import { setTheme } from "@/lib/theme";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
+  DropdownMenuGroup,
+} from "@/components/ui/dropdown-menu";
+import { UserAvatar, userInitials } from "@/components/common/UserAvatar";
 
 interface Props {
   collapsed: boolean;
@@ -16,6 +22,7 @@ interface Props {
 export function Sidebar({ collapsed, onToggle }: Props) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [treeSearch, setTreeSearch] = useState("");
   const [themeState, setThemeState] = useState(() =>
     document.documentElement.classList.contains("dark") ? "dark" as const : "light" as const
@@ -26,11 +33,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
     queryFn: () => listTrees(0, 100),
   });
 
-  const initials = (
-    user?.full_name?.split(" ").map((w) => w[0]).join("").slice(0, 2) ||
-    user?.username?.slice(0, 2) ||
-    "?"
-  ).toUpperCase();
+  const initials = userInitials(user?.full_name, user?.username);
 
   const c = collapsed;
 
@@ -117,16 +120,65 @@ export function Sidebar({ collapsed, onToggle }: Props) {
 
       <Separator className={`my-3 ${c ? "mx-2" : ""}`} />
 
-      {/* Settings + theme */}
-      <div className={`${c ? "px-1 flex flex-col items-center gap-1" : "px-3 mb-4 flex items-center gap-1"}`}>
-        <NavLink to="/settings" title="Settings" className={({ isActive }) =>
-          `flex items-center ${c ? "justify-center h-8 w-8" : "gap-2.5 px-3 py-2 flex-1"} rounded-md text-sm transition-colors whitespace-nowrap ${
-            isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          }`
-        }>
-          <Settings className="h-4 w-4 shrink-0" />
-          {!c && "Settings"}
-        </NavLink>
+      {/* Account chip (dropdown) + theme toggle */}
+      <div className={`${c ? "px-1 flex flex-col items-center gap-1.5 mb-3" : "px-3 mb-4 flex items-center gap-1.5"}`}>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            title={c ? (user?.full_name || user?.username || "Account") : undefined}
+            className={`flex items-center ${c ? "justify-center h-9 w-9" : "gap-2.5 px-2 py-1.5 flex-1 min-w-0"} rounded-md hover:bg-accent text-foreground transition-colors`}
+          >
+            {user && (
+              <UserAvatar
+                userId={user.id}
+                hasAvatar={user.has_avatar}
+                initials={initials}
+                size={c ? 28 : 32}
+              />
+            )}
+            {!c && (
+              <>
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-sm font-medium leading-tight truncate whitespace-nowrap">
+                    {user?.full_name || user?.username}
+                  </p>
+                  {user?.full_name && (
+                    <p className="text-xs text-muted-foreground leading-tight truncate whitespace-nowrap">@{user.username}</p>
+                  )}
+                </div>
+                <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              </>
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side={c ? "right" : "top"} align="start" className="w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-0.5">
+                  <p className="text-sm font-medium truncate">{user?.full_name || user?.username}</p>
+                  {user?.email && (
+                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                  )}
+                </div>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            {user?.is_superadmin && (
+              <DropdownMenuItem onClick={() => navigate("/admin")}>
+                <Shield className="h-4 w-4 mr-2" />
+                Admin
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => navigate("/settings")}>
+              <Settings className="h-4 w-4 mr-2" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
+              <LogOut className="h-4 w-4 mr-2" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <button
           onClick={() => {
             const isDark = document.documentElement.classList.contains("dark");
@@ -139,34 +191,6 @@ export function Sidebar({ collapsed, onToggle }: Props) {
         >
           {themeState === "dark" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
         </button>
-      </div>
-
-      {/* User footer */}
-      <div className={`${c ? "px-1 flex justify-center mt-2" : "px-4 flex items-center gap-3"}`}>
-        <div className={`${c ? "h-7 w-7 text-[10px]" : "h-8 w-8 text-xs"} rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold shrink-0 select-none`}
-          title={c ? (user?.full_name || user?.username || "") : undefined}
-        >
-          {initials}
-        </div>
-        {!c && (
-          <>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium leading-tight truncate whitespace-nowrap">
-                {user?.full_name || user?.username}
-              </p>
-              {user?.full_name && (
-                <p className="text-xs text-muted-foreground truncate whitespace-nowrap">@{user.username}</p>
-              )}
-            </div>
-            <button
-              onClick={logout}
-              title="Log out"
-              className="flex items-center justify-center h-7 w-7 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors shrink-0"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
-          </>
-        )}
       </div>
     </div>
   );

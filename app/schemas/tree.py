@@ -14,6 +14,7 @@ class TreeUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
     is_public: bool | None = None
+    slug: str | None = Field(None, min_length=1, max_length=280, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 class TreeResponse(BaseModel):
@@ -49,5 +50,6 @@ class TreeMemberResponse(BaseModel):
     role: str
     created_at: datetime
     username: str | None = None
+    has_avatar: bool = False
 
     model_config = {"from_attributes": True}

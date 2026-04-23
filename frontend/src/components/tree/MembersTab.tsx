@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { UserAvatar, userInitials } from "@/components/common/UserAvatar";
 
 interface Props {
   treeId: string;
@@ -31,6 +33,7 @@ export function MembersTab({ treeId }: Props) {
   const [role, setRole] = useState("viewer");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteRole, setInviteRole] = useState("viewer");
+  const [removeTarget, setRemoveTarget] = useState<{ userId: string; username: string } | null>(null);
 
   const { data: members, isLoading } = useQuery({
     queryKey: queryKeys.trees.members(treeId),
@@ -141,7 +144,17 @@ export function MembersTab({ treeId }: Props) {
           <TableBody>
             {members?.map((member) => (
               <TableRow key={member.id}>
-                <TableCell className="font-medium">{member.username || member.user_id.slice(0, 8)}</TableCell>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    <UserAvatar
+                      userId={member.user_id}
+                      hasAvatar={member.has_avatar}
+                      initials={userInitials(null, member.username)}
+                      size={28}
+                    />
+                    <span>{member.username || member.user_id.slice(0, 8)}</span>
+                  </div>
+                </TableCell>
                 <TableCell>
                   <Badge variant={member.role === "owner" ? "default" : "secondary"}>{member.role === "owner" ? "Owner" : member.role}</Badge>
                 </TableCell>
@@ -168,7 +181,11 @@ export function MembersTab({ treeId }: Props) {
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => removeMut.mutate(member.user_id)}
+                        disabled={removeMut.isPending}
+                        onClick={() => setRemoveTarget({
+                          userId: member.user_id,
+                          username: member.username || member.user_id.slice(0, 8),
+                        })}
                       >
                         Remove
                       </Button>
@@ -219,6 +236,17 @@ export function MembersTab({ treeId }: Props) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={() => { if (removeTarget) removeMut.mutate(removeTarget.userId); }}
+        title={`Remove ${removeTarget?.username}?`}
+        message="They will lose access to this tree immediately. You can re-invite them later."
+        confirmLabel="Remove member"
+        destructive
+        isPending={removeMut.isPending}
+      />
     </div>
   );
 }

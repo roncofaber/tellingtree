@@ -18,20 +18,22 @@ def test_register(client):
     assert "id" in data
 
 
-def test_register_duplicate_email(client, registered_user):
+def test_register_duplicate_email(client, registered_user, make_invite):
     response = client.post("/api/v1/auth/register", json={
         "email": "test@example.com",
         "username": "different",
         "password": "securepassword123",
+        "invite_token": make_invite(),
     })
     assert response.status_code == 409
 
 
-def test_register_duplicate_username(client, registered_user):
+def test_register_duplicate_username(client, registered_user, make_invite):
     response = client.post("/api/v1/auth/register", json={
         "email": "different@example.com",
         "username": "testuser",
         "password": "securepassword123",
+        "invite_token": make_invite(),
     })
     assert response.status_code == 409
 

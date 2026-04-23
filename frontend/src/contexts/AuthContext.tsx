@@ -20,7 +20,8 @@ interface AuthState {
     email: string,
     username: string,
     password: string,
-    fullName?: string
+    fullName?: string,
+    inviteToken?: string,
   ) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -80,10 +81,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     username: string,
     password: string,
-    fullName?: string
+    fullName?: string,
+    inviteToken?: string,
   ) => {
-    await authApi.register({ email, username, password, full_name: fullName });
-    await login(username, password);
+    await authApi.register({
+      email, username, password,
+      full_name: fullName,
+      invite_token: inviteToken,
+    });
+    // After invite-only registration the user is in pending_approval and can't login yet,
+    // so don't auto-login unless this was the bootstrap (zero users → first user is approved).
+    try {
+      await login(username, password);
+    } catch {
+      // pending approval — caller will route to a "pending" page
+    }
   };
 
   const refreshUser = async () => {

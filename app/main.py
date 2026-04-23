@@ -1,13 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import audit, auth, health, imports, invites, media, notifications, persons, places, relationships, stories, tags, trash, trees, users
+from app.api.v1 import admin, audit, auth, health, imports, invites, media, notifications, persons, places, relationships, stories, tags, trash, trees, users
 from app.config import settings
+
+_is_prod = settings.environment == "production"
 
 app = FastAPI(
     title="TellingTree",
     description="Open-source genealogy app focused on storytelling and memories",
     version="0.1.0",
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
 )
 
 app.add_middleware(
@@ -37,3 +42,4 @@ app.include_router(trash.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(invites.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { Globe, Lock } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { getTree, updateTree, deleteTree } from "@/api/trees";
+import { getTree, updateTree, deleteTree, transferTree, listMembers } from "@/api/trees";
+import { useAuth } from "@/hooks/useAuth";
 import { resetTreeGeocoding } from "@/api/places";
 import { listPersons } from "@/api/persons";
 import { importGedcomStreaming, type ImportResult, type ImportProgress } from "@/api/imports";
@@ -18,7 +20,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { MembersTab } from "@/components/tree/MembersTab";
 import { TrashTab } from "@/components/tree/TrashTab";
 import { PlacesManageTab } from "@/components/tree/PlacesManageTab";
@@ -106,10 +110,12 @@ export function TreeManagePage() {
   const { treeSlug }  = useParams<{ treeSlug: string }>();
   const navigate      = useNavigate();
   const queryClient   = useQueryClient();
+  const { user }      = useAuth();
 
   // Edit form
   const [name, setName]           = useState("");
   const [desc, setDesc]           = useState("");
+  const [slug, setSlug]           = useState("");
   const [editMode, setEditMode]   = useState(false);
 
   // GEDCOM import
@@ -124,10 +130,15 @@ export function TreeManagePage() {
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false);
 
+  // Visibility toggle confirmation
+  const [confirmVisibility, setConfirmVisibility] = useState(false);
+
+  // Ownership transfer
+  const [transferTargetId, setTransferTargetId] = useState<string>("");
+  const [confirmTransfer, setConfirmTransfer] = useState(false);
+
   // Geocoding reset
   const [confirmReset, setConfirmReset] = useState(false);
-  const [resetting,    setResetting]    = useState(false);
-  const [resetResult,  setResetResult]  = useState<number | null>(null);
 
   const { data: tree, isLoading } = useQuery({
     queryKey: queryKeys.trees.detail(treeSlug!),
@@ -153,11 +164,21 @@ export function TreeManagePage() {
   });
 
   const updateMut = useMutation({
-    mutationFn: () => updateTree(treeId!, { name, description: desc || undefined }),
-    onSuccess: () => {
+    mutationFn: () => {
+      const payload: { name: string; description?: string; slug?: string } = {
+        name, description: desc || undefined,
+      };
+      if (slug && slug !== tree?.slug) payload.slug = slug;
+      return updateTree(treeId!, payload);
+    },
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.trees.detail(treeId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.trees.all() });
       setEditMode(false);
       toast.success("Tree updated");
+      if (updated.slug !== treeSlug) {
+        navigate(`/trees/${updated.slug}/manage`, { replace: true });
+      }
     },
     onError: (e) => {
       toast.error(e instanceof Error ? e.message : "Failed to update tree");
@@ -176,9 +197,45 @@ export function TreeManagePage() {
     },
   });
 
+  const visibilityMut = useMutation({
+    mutationFn: () => updateTree(treeId!, { is_public: !tree?.is_public }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.trees.detail(treeSlug!) });
+      toast.success(tree?.is_public ? "Tree is now private" : "Tree is now public");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to change visibility");
+    },
+  });
+
+  const isOwner = !!user && !!tree && user.id === tree.owner_id;
+
+  const { data: members } = useQuery({
+    queryKey: queryKeys.trees.members(treeId!),
+    queryFn:  () => listMembers(treeId!),
+    enabled:  !!treeId && isOwner,
+  });
+  const transferableMembers = (members ?? []).filter(m => m.user_id !== tree?.owner_id);
+  const transferTarget = transferableMembers.find(m => m.user_id === transferTargetId);
+
+  const transferMut = useMutation({
+    mutationFn: () => transferTree(treeId!, transferTargetId),
+    onSuccess: () => {
+      toast.success(`Ownership transferred to ${transferTarget?.username || "member"}`);
+      queryClient.invalidateQueries({ queryKey: queryKeys.trees.detail(treeSlug!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.trees.members(treeId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.trees.all() });
+      navigate("/dashboard");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to transfer ownership");
+    },
+  });
+
   const startEdit = () => {
     setName(tree?.name ?? "");
     setDesc(tree?.description ?? "");
+    setSlug(tree?.slug ?? "");
     setEditMode(true);
   };
 
@@ -197,19 +254,18 @@ export function TreeManagePage() {
     } finally { setImporting(false); }
   };
 
-  const handleResetGeocoding = async () => {
-    setResetting(true);
-    try {
-      const { cleared } = await resetTreeGeocoding(treeId!);
-      setResetResult(cleared);
+  const resetGeocodingMut = useMutation({
+    mutationFn: () => resetTreeGeocoding(treeId!),
+    onSuccess: ({ cleared }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTree(treeId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.places.forTreeDetails(treeId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.persons.full(treeId!) });
-    } finally {
-      setResetting(false);
-      setConfirmReset(false);
-    }
-  };
+      toast.success(`Cleared ${cleared} place link${cleared !== 1 ? "s" : ""}`);
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to reset geocoding");
+    },
+  });
 
   const resetImport = () => {
     setImportResult(null); setImportError(null); setImportProgress(null); setSelectedFile(null);
@@ -244,6 +300,7 @@ export function TreeManagePage() {
 
         {/* ── General ── */}
         <TabsContent value="general" className="space-y-4 mt-4 overflow-auto min-h-0">
+          {/* Identity */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -253,108 +310,142 @@ export function TreeManagePage() {
             </CardHeader>
             <CardContent>
               {editMode ? (
-                <div className="space-y-3">
-                  <div className="space-y-1"><Label className="text-xs">Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
-                  <div className="space-y-1"><Label className="text-xs">Description</Label><Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} /></div>
+                <div className="space-y-4">
+                  <div className="space-y-1.5"><Label className="text-xs font-medium">Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label className="text-xs font-medium">Description</Label><Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} placeholder="A short description of this tree…" /></div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">URL slug</Label>
+                    <Input
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-"))}
+                      placeholder="my-family-tree"
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Used in the URL: <span className="font-mono">/trees/{slug || "…"}</span>
+                      {slug && slug !== tree?.slug && <span className="text-amber-600"> · existing links will break</span>}
+                    </p>
+                  </div>
                   {updateMut.error && <p className="text-sm text-destructive">{updateMut.error instanceof Error ? updateMut.error.message : "Failed to save"}</p>}
-                  <div className="flex gap-2">
-                    <Button size="sm" disabled={updateMut.isPending} onClick={() => updateMut.mutate()}>{updateMut.isPending ? "Saving…" : "Save"}</Button>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" disabled={updateMut.isPending} onClick={() => updateMut.mutate()}>{updateMut.isPending ? "Saving…" : "Save changes"}</Button>
                     <Button size="sm" variant="outline" onClick={() => setEditMode(false)}>Cancel</Button>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2 text-sm">
-                  <p><span className="text-muted-foreground">Name:</span> {tree?.name}</p>
-                  {tree?.description && <p><span className="text-muted-foreground">Description:</span> {tree.description}</p>}
-                  <div className="flex items-center gap-3 pt-1">
-                    <span className="text-muted-foreground">Visibility:</span>
-                    <span className={`text-xs px-2.5 py-1 rounded-md border ${tree?.is_public ? "bg-emerald-500/10 text-emerald-600 border-emerald-200" : "bg-muted text-muted-foreground border-border"}`}>
-                      {tree?.is_public ? "Public" : "Private"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{tree?.is_public ? "Anyone can view this tree" : "Only members can view"}</span>
-                  </div>
-                  <div className="rounded-lg border bg-muted/50 p-3 mt-2">
-                    <p className="text-xs text-muted-foreground mb-2">
-                      {tree?.is_public
-                        ? "Making this tree private will prevent anyone without a membership from viewing it."
-                        : "Making this tree public will allow anyone with the link to view it (read-only)."}
-                    </p>
-                    <Button
-                      size="sm"
-                      variant={tree?.is_public ? "outline" : "default"}
-                      onClick={async () => {
-                        await updateTree(treeId!, { is_public: !tree?.is_public });
-                        queryClient.invalidateQueries({ queryKey: queryKeys.trees.detail(treeSlug!) });
-                        toast.success(tree?.is_public ? "Tree is now private" : "Tree is now public");
-                      }}
-                    >
-                      {tree?.is_public ? "Make private" : "Make public"}
-                    </Button>
-                  </div>
-                </div>
+                <dl className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-3 text-sm">
+                  <dt className="text-muted-foreground">Name</dt>
+                  <dd className="font-medium">{tree?.name}</dd>
+
+                  <dt className="text-muted-foreground">URL slug</dt>
+                  <dd className="font-mono text-xs text-muted-foreground">/trees/{tree?.slug}</dd>
+
+                  <dt className="text-muted-foreground">Description</dt>
+                  <dd className={tree?.description ? "" : "text-muted-foreground italic"}>
+                    {tree?.description || "No description set"}
+                  </dd>
+                </dl>
               )}
             </CardContent>
           </Card>
 
-          {/* You in this tree */}
+          {/* Visibility — its own card */}
           <Card>
-            <CardHeader><CardTitle className="text-base">You in this tree</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Visibility</CardTitle></CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground mb-3">Select which person represents you. This will be used as the default center in the graph.</p>
-              <div className="space-y-2">
-                <Input
-                  placeholder="Search by name…"
-                  value={rootSearch}
-                  onChange={e => setRootSearch(e.target.value)}
-                  className="h-8"
-                />
-                {rootSearch && (
-                  <div className="border rounded-md max-h-40 overflow-y-auto">
-                    {(personsData?.items ?? [])
-                      .filter(p => [p.given_name, p.family_name].join(" ").toLowerCase().includes(rootSearch.toLowerCase()))
-                      .slice(0, 8)
-                      .map(p => {
-                        const pName = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
-                        const year = p.birth_date?.slice(0, 4);
-                        const isSelected = graphSettings.myPersonId === p.id;
-                        return (
-                          <button key={p.id}
-                            className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
-                            onClick={() => {
-                              const u = { ...graphSettings, myPersonId: p.id, defaultRootPersonId: p.id };
-                              setGraphSettings(u); saveGraphSettings(treeId!, u);
-                              setRootSearch("");
-                              toast.success(`You are now ${pName}`);
-                            }}>
-                            <span className="font-medium truncate">{pName}</span>
-                            {year && <span className="text-xs text-muted-foreground ml-auto">b. {year}</span>}
-                          </button>
-                        );
-                      })}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3 min-w-0">
+                  {tree?.is_public ? (
+                    <Globe className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
+                  ) : (
+                    <Lock className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {tree?.is_public ? "Public" : "Private"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {tree?.is_public
+                        ? "Anyone with the link can view this tree (read-only)."
+                        : "Only invited members can view this tree."}
+                    </p>
                   </div>
-                )}
-                {graphSettings.myPersonId && (() => {
-                  const me = personsData?.items.find(p => p.id === graphSettings.myPersonId);
-                  const meName = me ? [me.given_name, me.family_name].filter(Boolean).join(" ") : "—";
-                  return (
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-muted-foreground">Currently set to:</span>
-                      <span className="font-medium">{meName}</span>
-                      <button className="text-xs text-primary hover:underline" onClick={() => {
-                        const u = { ...graphSettings, myPersonId: null };
-                        setGraphSettings(u); saveGraphSettings(treeId!, u);
-                      }}>Clear</button>
-                    </div>
-                  );
-                })()}
+                </div>
+                <Button
+                  size="sm"
+                  variant={tree?.is_public ? "outline" : "default"}
+                  disabled={visibilityMut.isPending}
+                  onClick={() => setConfirmVisibility(true)}
+                  className="shrink-0"
+                >
+                  {tree?.is_public ? "Make private" : "Make public"}
+                </Button>
               </div>
             </CardContent>
           </Card>
 
+          {/* You in this tree — personal preference, used by Graph + story editor mentions */}
           <Card>
-            <CardHeader><CardTitle className="text-base">Members</CardTitle></CardHeader>
-            <CardContent><MembersTab treeId={treeId!} /></CardContent>
+            <CardHeader>
+              <CardTitle className="text-base">You in this tree</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {graphSettings.myPersonId && (() => {
+                const me = personsData?.items.find(p => p.id === graphSettings.myPersonId);
+                const meName = me ? [me.given_name, me.family_name].filter(Boolean).join(" ") : "Unknown";
+                return (
+                  <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Set as me:</span>{" "}
+                      <span className="font-medium">{meName}</span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-xs h-7"
+                      onClick={() => { const u = { ...graphSettings, myPersonId: null }; setGraphSettings(u); saveGraphSettings(treeId!, u); }}>
+                      Clear
+                    </Button>
+                  </div>
+                );
+              })()}
+              <Input
+                placeholder={graphSettings.myPersonId ? "Change…" : "Search by name to set as me…"}
+                value={rootSearch}
+                onChange={e => setRootSearch(e.target.value)}
+                className="h-8"
+              />
+              {rootSearch && (
+                <div className="border rounded-md max-h-40 overflow-y-auto">
+                  {(personsData?.items ?? [])
+                    .filter(p => [p.given_name, p.family_name].join(" ").toLowerCase().includes(rootSearch.toLowerCase()))
+                    .slice(0, 8)
+                    .map(p => {
+                      const pName = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
+                      const year = p.birth_date?.slice(0, 4);
+                      const isSelected = graphSettings.myPersonId === p.id;
+                      return (
+                        <button key={p.id}
+                          className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                          onClick={() => {
+                            const u = { ...graphSettings, myPersonId: p.id, defaultRootPersonId: p.id };
+                            setGraphSettings(u); saveGraphSettings(treeId!, u);
+                            setRootSearch("");
+                            toast.success(`You are now ${pName}`);
+                          }}>
+                          <span className="font-medium truncate">{pName}</span>
+                          {year && <span className="text-xs text-muted-foreground ml-auto">b. {year}</span>}
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">Used as the graph's default center and to power @me / @mom / @dad shortcuts in stories.</p>
+            </CardContent>
           </Card>
+
+          {/* Members — direct embed, no Card wrapper (MembersTab has its own layout) */}
+          <div>
+            <h2 className="text-base font-semibold mb-3 px-1">Members</h2>
+            <MembersTab treeId={treeId!} />
+          </div>
         </TabsContent>
 
         <TabsContent value="health" className="mt-4 overflow-auto min-h-0">
@@ -539,19 +630,14 @@ export function TreeManagePage() {
               <p className="text-sm text-muted-foreground">
                 Clear all place links from persons so you can re-geocode everything from scratch.
               </p>
-              {resetResult !== null && (
-                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
-                  Cleared {resetResult} place link{resetResult !== 1 ? "s" : ""}.
-                </p>
-              )}
-              {confirmReset ? (
-                <div className="flex gap-2">
-                  <Button variant="destructive" size="sm" disabled={resetting} onClick={handleResetGeocoding}>{resetting ? "Resetting…" : "Confirm reset"}</Button>
-                  <Button variant="outline" size="sm" onClick={() => setConfirmReset(false)}>Cancel</Button>
-                </div>
-              ) : (
-                <Button variant="outline" size="sm" onClick={() => { setResetResult(null); setConfirmReset(true); }}>Reset all geocoding…</Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={resetGeocodingMut.isPending}
+                onClick={() => setConfirmReset(true)}
+              >
+                Reset all geocoding…
+              </Button>
             </CardContent>
           </Card>
           <PlacesManageTab treeId={treeId!} />
@@ -599,6 +685,50 @@ export function TreeManagePage() {
 
         {/* ── Advanced ── */}
         <TabsContent value="advanced" className="space-y-4 mt-4 overflow-auto min-h-0">
+          {isOwner && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Transfer ownership</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Hand this tree over to another member. After transfer you'll lose access unless the new owner re-invites you. Required before deleting your account if you own trees.
+                </p>
+                {transferableMembers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">
+                    No other members to transfer to. Invite a member first from the Members tab.
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select
+                      value={transferTargetId || undefined}
+                      onValueChange={(v) => { if (v !== null) setTransferTargetId(v); }}
+                    >
+                      <SelectTrigger className="w-64 h-9">
+                        <SelectValue placeholder="Select new owner…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {transferableMembers.map(m => (
+                          <SelectItem key={m.user_id} value={m.user_id}>
+                            {m.username || m.user_id.slice(0, 8)} <span className="text-xs text-muted-foreground">({m.role})</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!transferTargetId || transferMut.isPending}
+                      onClick={() => setConfirmTransfer(true)}
+                    >
+                      Transfer ownership
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="border-destructive/40">
             <CardHeader><CardTitle className="text-base text-destructive">Danger zone</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between">
@@ -676,6 +806,44 @@ export function TreeManagePage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Visibility toggle confirmation */}
+      <ConfirmDialog
+        open={confirmVisibility}
+        onClose={() => setConfirmVisibility(false)}
+        onConfirm={() => visibilityMut.mutate()}
+        title={tree?.is_public ? "Make this tree private?" : "Make this tree public?"}
+        message={tree?.is_public
+          ? "Anyone outside the member list will lose access. People with the link will no longer be able to view it."
+          : "Anyone with the link will be able to view this tree (read-only), including names, dates, and stories. Make sure you're comfortable sharing this information publicly."}
+        confirmLabel={tree?.is_public ? "Make private" : "Make public"}
+        destructive={tree?.is_public}
+        isPending={visibilityMut.isPending}
+      />
+
+      {/* Ownership transfer confirmation */}
+      <ConfirmDialog
+        open={confirmTransfer}
+        onClose={() => setConfirmTransfer(false)}
+        onConfirm={() => transferMut.mutate()}
+        title={`Transfer ownership to ${transferTarget?.username || "this member"}?`}
+        message={`After this, ${transferTarget?.username || "they"} will become the sole owner. You'll lose all access to "${tree?.name}" unless they re-invite you. This cannot be undone from your side.`}
+        confirmLabel="Transfer ownership"
+        destructive
+        isPending={transferMut.isPending}
+      />
+
+      {/* Geocoding reset confirmation */}
+      <ConfirmDialog
+        open={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        onConfirm={() => resetGeocodingMut.mutate()}
+        title="Reset all geocoding?"
+        message="This clears every place link from all persons in this tree. You'll need to re-geocode them. The places themselves are kept."
+        confirmLabel="Reset geocoding"
+        destructive
+        isPending={resetGeocodingMut.isPending}
+      />
 
       {/* Delete confirmation */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

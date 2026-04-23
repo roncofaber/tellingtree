@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listTrash, restorePerson, permanentDeletePerson, restoreStory, permanentDeleteStory } from "@/api/trash";
@@ -5,10 +6,14 @@ import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+
+type DeleteTarget = { kind: "person" | "story"; id: string; label: string };
 
 export function TrashTab({ treeId }: { treeId: string }) {
   const queryClient = useQueryClient();
   const trashKey = ["trees", treeId, "trash"] as const;
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: trashKey,
@@ -83,7 +88,9 @@ export function TrashTab({ treeId }: { treeId: string }) {
                       <TableCell>
                         <div className="flex gap-1">
                           <Button size="sm" variant="outline" onClick={() => restorePersonMut.mutate(p.id)}>Restore</Button>
-                          <Button size="sm" variant="destructive" onClick={() => { if (confirm("Permanently delete? This cannot be undone.")) permDeletePersonMut.mutate(p.id); }}>Delete forever</Button>
+                          <Button size="sm" variant="destructive"
+                            onClick={() => setDeleteTarget({ kind: "person", id: p.id, label: name })}
+                          >Delete forever</Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -117,7 +124,9 @@ export function TrashTab({ treeId }: { treeId: string }) {
                       <TableCell>
                         <div className="flex gap-1">
                           <Button size="sm" variant="outline" onClick={() => restoreStoryMut.mutate(s.id)}>Restore</Button>
-                          <Button size="sm" variant="destructive" onClick={() => { if (confirm("Permanently delete? This cannot be undone.")) permDeleteStoryMut.mutate(s.id); }}>Delete forever</Button>
+                          <Button size="sm" variant="destructive"
+                            onClick={() => setDeleteTarget({ kind: "story", id: s.id, label: s.title })}
+                          >Delete forever</Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -128,6 +137,21 @@ export function TrashTab({ treeId }: { treeId: string }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          if (deleteTarget.kind === "person") permDeletePersonMut.mutate(deleteTarget.id);
+          else permDeleteStoryMut.mutate(deleteTarget.id);
+        }}
+        title={`Permanently delete ${deleteTarget?.kind === "person" ? "person" : "story"}?`}
+        message={`"${deleteTarget?.label}" will be permanently removed. This cannot be undone.`}
+        confirmLabel="Delete forever"
+        destructive
+        isPending={deleteTarget?.kind === "person" ? permDeletePersonMut.isPending : permDeleteStoryMut.isPending}
+      />
     </div>
   );
 }

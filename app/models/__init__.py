@@ -1,6 +1,8 @@
 from app.models.audit import AuditLog
 from app.models.invite import TreeInvite
 from app.models.place import Place
+from app.models.refresh_session import RefreshSession
+from app.models.registration_invite import RegistrationInvite
 from app.models.user import User
 from app.models.tree import Tree, TreeMember
 from app.models.person import Person
@@ -14,6 +16,8 @@ __all__ = [
     "AuditLog",
     "TreeInvite",
     "Place",
+    "RefreshSession",
+    "RegistrationInvite",
     "User",
     "Tree",
     "TreeMember",

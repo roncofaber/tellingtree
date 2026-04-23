@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { API_PREFIX } from "@/lib/constants";
 import type { Token, User } from "@/types/api";
 
 export function register(data: {
@@ -6,8 +7,20 @@ export function register(data: {
   username: string;
   password: string;
   full_name?: string;
+  invite_token?: string;
 }) {
   return apiClient.post<User>("/auth/register", data);
+}
+
+export interface InviteValidation {
+  valid: boolean;
+  email: string | null;
+  expired: boolean;
+  used: boolean;
+}
+
+export function validateRegistrationInvite(token: string) {
+  return apiClient.get<InviteValidation>(`/auth/registration-invites/${token}/validate`);
 }
 
 export function login(data: { username: string; password: string }) {
@@ -35,4 +48,26 @@ export function changePassword(data: {
 
 export function deleteAccount(data: { password: string }) {
   return apiClient.delete<void>("/users/me", data);
+}
+
+export function uploadAvatar(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiClient.upload<User>("/users/me/avatar", formData);
+}
+
+export function deleteAvatar() {
+  return apiClient.delete<User>("/users/me/avatar");
+}
+
+export async function fetchAvatarBlob(userId: string): Promise<string> {
+  const { getAccessToken } = await import("./client");
+  const token = getAccessToken();
+  const resp = await fetch(`${API_PREFIX}/users/${userId}/avatar`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
+  });
+  if (!resp.ok) throw new Error("Failed to fetch avatar");
+  const blob = await resp.blob();
+  return URL.createObjectURL(blob);
 }

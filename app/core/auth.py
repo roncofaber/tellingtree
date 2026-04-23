@@ -4,7 +4,7 @@ from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
-from app.core.errors import UnauthorizedError
+from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
@@ -38,3 +38,10 @@ def get_current_user(
         raise UnauthorizedError("Token has been revoked")
 
     return user
+
+
+def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency: caller must be a superadmin."""
+    if not current_user.is_superadmin:
+        raise ForbiddenError("Admin privileges required")
+    return current_user

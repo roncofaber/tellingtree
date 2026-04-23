@@ -20,14 +20,17 @@ export function setOnAuthFailure(cb: () => void) {
   onAuthFailure = cb;
 }
 
-class ApiRequestError extends Error {
+export class ApiRequestError extends Error {
   status: number;
   detail: string;
+  /** Raw structured payload from the server (FastAPI sometimes returns dicts). */
+  payload: unknown;
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, payload?: unknown) {
     super(detail);
     this.status = status;
     this.detail = detail;
+    this.payload = payload;
   }
 }
 
@@ -89,13 +92,20 @@ async function request<T>(
 
   if (!resp.ok) {
     let detail = "Request failed";
+    let payload: unknown = undefined;
     try {
       const err: ApiError = await resp.json();
-      detail = err.detail;
+      payload = err.detail;
+      // FastAPI's detail can be a string or a structured dict (we use {code, message} for some errors)
+      if (typeof err.detail === "string") {
+        detail = err.detail;
+      } else if (err.detail && typeof err.detail === "object" && "message" in err.detail) {
+        detail = String((err.detail as { message: unknown }).message);
+      }
     } catch {
       // ignore parse error
     }
-    throw new ApiRequestError(resp.status, detail);
+    throw new ApiRequestError(resp.status, detail, payload);
   }
 
   return resp.json();

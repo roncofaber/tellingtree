@@ -4,7 +4,10 @@ export interface User {
   username: string;
   full_name: string | null;
   is_active: boolean;
+  is_approved: boolean;
+  is_superadmin: boolean;
   created_at: string;
+  has_avatar: boolean;
 }
 
 export interface Token {
@@ -21,5 +24,5 @@ export interface PaginatedResponse<T> {
 }
 
 export interface ApiError {
-  detail: string;
+  detail: string | { code?: string; message?: string };
 }

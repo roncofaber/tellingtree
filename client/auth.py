@@ -12,10 +12,13 @@ class AuthClient(BaseClient):
         username: str,
         password: str,
         full_name: str | None = None,
+        invite_token: str | None = None,
     ) -> UserResponse:
         data = {"email": email, "username": username, "password": password}
         if full_name is not None:
             data["full_name"] = full_name
+        if invite_token is not None:
+            data["invite_token"] = invite_token
         resp = self._post("/auth/register", json=data)
         return UserResponse.model_validate(resp.json())
 

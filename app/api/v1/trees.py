@@ -86,10 +86,23 @@ def update_tree(
     from app.services.permission import make_unique_slug
     tree = check_tree_access(db, tree_id, current_user.id, "admin")
     update_data = data.model_dump(exclude_unset=True)
+
+    explicit_slug = update_data.pop("slug", None)
     for key, value in update_data.items():
         setattr(tree, key, value)
-    if "name" in update_data:
+
+    if explicit_slug is not None:
+        existing = (
+            db.query(Tree.id)
+            .filter(Tree.slug == explicit_slug, Tree.id != tree.id)
+            .first()
+        )
+        if existing is not None:
+            raise BadRequestError("This URL slug is already taken by another tree")
+        tree.slug = explicit_slug
+    elif "name" in update_data:
         tree.slug = make_unique_slug(db, tree.name, exclude_id=tree.id)
+
     db.commit()
     db.refresh(tree)
     return tree
@@ -152,6 +165,7 @@ def list_members(
     for m in members:
         resp = TreeMemberResponse.model_validate(m)
         resp.username = m.user.username
+        resp.has_avatar = m.user.avatar_path is not None
         result.append(resp)
     return result
 
@@ -183,6 +197,7 @@ def add_member(
     db.refresh(member)
     resp = TreeMemberResponse.model_validate(member)
     resp.username = user.username
+    resp.has_avatar = user.avatar_path is not None
     return resp
 
 
@@ -209,6 +224,7 @@ def update_member(
     db.refresh(member)
     resp = TreeMemberResponse.model_validate(member)
     resp.username = member.user.username
+    resp.has_avatar = member.user.avatar_path is not None
     return resp
 
 

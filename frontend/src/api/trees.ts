@@ -23,7 +23,7 @@ export function getTree(treeId: string) {
 
 export function updateTree(
   treeId: string,
-  data: { name?: string; description?: string; is_public?: boolean }
+  data: { name?: string; description?: string; is_public?: boolean; slug?: string }
 ) {
   return apiClient.put<Tree>(`/trees/${treeId}`, data);
 }

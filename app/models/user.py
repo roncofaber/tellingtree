@@ -13,7 +13,10 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(255))
+    avatar_path: Mapped[str | None] = mapped_column(String(500), default=None)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
     token_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -26,3 +29,7 @@ class User(Base):
 
     owned_trees = relationship("Tree", back_populates="owner")
     tree_memberships = relationship("TreeMember", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+
+    @property
+    def has_avatar(self) -> bool:
+        return self.avatar_path is not None

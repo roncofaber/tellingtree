@@ -1,0 +1,13 @@
+:80 {
+    # API — proxy to the backend container
+    handle /api/* {
+        reverse_proxy app:8000
+    }
+
+    # SPA — serve static files, fall back to index.html for client-side routing
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}
