@@ -11,6 +11,7 @@ All endpoints return JSON. Protected endpoints require `Authorization: Bearer <t
 | POST | /auth/register | No | Create user account |
 | POST | /auth/login | No | Get JWT access + refresh tokens |
 | POST | /auth/refresh | Yes (refresh) | Get new access token |
+| POST | /auth/logout | No | Clear refresh cookie |
 
 ## Users
 
@@ -31,6 +32,9 @@ All endpoints return JSON. Protected endpoints require `Authorization: Bearer <t
 | PUT | /trees/:tree_id | Yes | admin | Update tree metadata |
 | DELETE | /trees/:tree_id | Yes | owner | Delete tree and all data |
 | PUT | /trees/:tree_id/transfer | Yes | owner | Transfer ownership to an existing member |
+| GET | /trees/:tree_id/search?q= | Yes | viewer+ | Search persons and stories (min 2 chars) |
+
+Note: `GET /trees/:tree_id` accepts tree slug or UUID.
 
 ## Tree Members
 
@@ -49,7 +53,9 @@ All endpoints return JSON. Protected endpoints require `Authorization: Bearer <t
 | POST | /trees/:tree_id/persons | Yes | editor+ | Create person |
 | GET | /trees/:tree_id/persons/:person_id | Yes | viewer+ | Get person details |
 | PUT | /trees/:tree_id/persons/:person_id | Yes | editor+ | Update person |
-| DELETE | /trees/:tree_id/persons/:person_id | Yes | editor+ | Delete person |
+| DELETE | /trees/:tree_id/persons/:person_id | Yes | editor+ | Soft-delete person |
+| GET | /trees/:tree_id/persons/:person_id/network | Yes | viewer+ | Get all connected persons (BFS) |
+| POST | /trees/:tree_id/persons/:person_id/merge | Yes | editor+ | Merge another person into this one |
 
 ## Relationships
 

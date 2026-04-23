@@ -56,18 +56,26 @@ frontend/
 
 ### Routes
 
+Routes use tree slugs (not UUIDs) and nested paths (not query params):
+
 ```
-/login                           → LoginPage
-/register                        → RegisterPage
-/dashboard                       → DashboardPage (tree list + create/import)
-/trees/:treeId                   → TreeDetailPage (?tab=home|graph|people|relationships|stories|places|media)
-/trees/:treeId/persons/:personId → PersonDetailPage
-/trees/:treeId/stories/:storyId  → StoryDetailPage
-/trees/:treeId/manage            → TreeManagePage (settings, members, danger zone)
-/settings                        → SettingsPage
+/login                                    → LoginPage
+/register                                 → RegisterPage
+/dashboard                                → DashboardPage
+/trees/:treeSlug                          → TreeDetailPage (Home)
+/trees/:treeSlug/graph                    → Graph (full tree + pedigree toggle)
+/trees/:treeSlug/map                      → Map (birth/death/story markers, heatmap, migration)
+/trees/:treeSlug/people                   → People list
+/trees/:treeSlug/stories                  → Stories list
+/trees/:treeSlug/media                    → Media gallery
+/trees/:treeSlug/manage                   → Settings (General, Health, Graph, Places, Relationships, Data, Trash, Advanced)
+/trees/:treeSlug/people/:personId         → PersonDetailPage (timeline, relationships, photos)
+/trees/:treeSlug/stories/:storyId         → StoryDetailPage (Lexical rich text, tags, attachments)
+/settings                                 → User settings
+/invite/:token                            → Invite acceptance
 ```
 
-Tab navigation is URL-driven (`?tab=…`) so all tabs are deep-linkable. The graph tab accepts `?tab=graph&root=<personId>` to open centred on a specific person.
+The graph tab accepts `?root=<personId>` to center on a specific person.
 
 ## Architecture Principles
 
@@ -168,42 +176,62 @@ The DB engine and session factory use lazy initialization (`app/db/session.py`).
 
 The family tree graph uses `family-chart`, a D3-based library purpose-built for genealogy.
 
-| Concern | Technology | Notes |
-|---------|------------|-------|
-| Layout + rendering | `family-chart` | D3-based; handles couples, generations, zoom/pan, expand/collapse natively |
-
-### Why family-chart
-
-Previous attempts used `relatives-tree` + React Flow, then `entitree-flex` + React Flow — both required hundreds of lines of custom layout code and broke on complex families (multiple marriages, intermarriage). `family-chart` is a complete solution: layout AND rendering in one library, with native support for couples, DAG deduplication, and configurable depth.
-
 ### Data flow
 
 ```
 Person[] + Relationship[]
-  → toFamilyChartData()     # pre-indexed O(n+m) transformation
-  → f3.createChart(cont, data)  # library handles layout + SVG rendering
-  → mounted imperatively via useRef + useEffect
-  → setCardInnerHtmlCreator()   # custom card HTML with accent colors
+  → indexRelationships()       # shared helper handling parent + child types (deduped via Sets)
+  → toFamilyChartData()        # pre-indexed O(n+m) transformation
+  → f3.createChart(cont, data) # library handles layout + SVG rendering
+  → buildCardHtml()            # shared card renderer (lib/graphSettings.ts) — used by graph AND preview
   → click/zoom/pan interactions via library callbacks
 ```
 
-### Root person
+### View modes
 
-`family-chart` centres the tree on a "main" person. Default: the person with no defined parents (oldest ancestor). Users can re-centre via double-click or Ctrl+click on any card. The setting persists in localStorage.
+- **Full tree** (default): vertical layout, family-chart handles depth natively with `setAncestryDepth()`/`setProgenyDepth()`. `setShowSiblingsOfMain(true)` shows siblings of the centered person.
+- **Pedigree**: horizontal layout (`setOrientationHorizontal()`), data pre-filtered to direct ancestors only via `buildPedigreeData()`. Depth-limited.
 
 ### Features
 
-- Configurable depth (show N generations up/down)
-- Mini-tree expand indicators on boundary cards
-- Path-to-main highlighting on hover
-- Custom card design with gender accent colors
-- Slide-over panel on click showing person details
-- Add-relative buttons (parent/partner/child) on card hover
-- Graph styling configurable in tree settings with live preview
+- Configurable depth (1-5 or unlimited) with animated transitions
+- Full/Pedigree toggle in controls bar
+- Person search to center tree (in controls bar)
+- Star icon (★) on "me" card (set via "You in this tree" in settings)
+- Non-blocking side panel with full person profile (avatar, timeline, stories, relationships, add-relative shortcuts)
+- Add-relative buttons on card hover (parent, child, sibling, spouse) — supports linking existing persons
+- Children sorted by birth year
+- Centered person highlighted with primary-color halo
+- Graph styling configurable in tree settings with live preview (shared `buildCardHtml`)
 
 ### Date display
 
-All dates go through `formatFlexDate(date, qualifier, date2, original)` in `frontend/src/lib/dates.ts`. This converts the flexible date model (qualifier + optional range) to human-readable strings: "circa 1950", "before 1960", "1910 – 1920", etc. Raw ISO strings are never displayed directly.
+All dates go through `formatFlexDate(date, qualifier, date2, original)` in `frontend/src/lib/dates.ts`. Dates parsed with `new Date(year, month-1, day)` to avoid timezone offset bugs. Raw ISO strings are never displayed directly.
+
+## Story Editor
+
+Stories use **Lexical** (Meta's rich text editor framework):
+
+- **Toolbar**: bold, italic, underline, strikethrough, H2/H3, blockquote, ordered/unordered lists, links, horizontal rules, image upload, file import, undo/redo
+- **@mention**: typeahead for person tagging. Smart shortcuts (`@me`, `@dad`, `@mom`, `@siblings`, etc.) resolve via relationship graph when "You in this tree" is set. Person IDs extracted from content on save.
+- **Inline images**: `ImageNode` (DecoratorNode) uploaded via `uploadMedia()`, rendered via `AuthImage`. Supports drag/drop, paste, and toolbar button.
+- **Document import**: `.txt`, `.md` (converted via markdown transformers), `.docx` (via mammoth.js client-side)
+- **Storage**: Lexical editor state as JSON in `stories.content` (TEXT column). Backward compatible — legacy plain text detected by absence of `{"root":` prefix.
+- **Read-only**: `StoryRenderer` renders with person hover cards showing geocoded locations, dates, occupation.
+- **Tags**: create/edit/delete with color picker, filterable in stories list.
+- **Attachments**: non-image media (audio, video, documents) shown below story content.
+
+## Map
+
+The Map tab (`MapTab`) provides geographic visualization:
+
+- **Dot markers**: blue (birth), gray (death), amber (story locations), green pin (searched person)
+- **Layer toggles**: Birth, Death, Stories, Heatmap, Migration — each with colored indicator and count
+- **Person search**: highlights all locations for a specific person
+- **Legend**: bottom-left overlay showing active layer colors
+- **Story locations**: resolved by matching `event_location` against the geocoding cache via `searchPlaces()`
+- **Heatmap**: `leaflet.heat` with logarithmic scaling by person count
+- **Migration lines**: dashed polylines between birth and death locations, weighted by person count
 
 ## GEDCOM Import
 

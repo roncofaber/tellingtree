@@ -47,10 +47,16 @@ User ──creates──> Tree ──contains──> Persons ──connected by�
 | id | UUID | Primary key |
 | owner_id | UUID | FK → users |
 | name | VARCHAR(255) | |
+| slug | VARCHAR(280) | URL-friendly name, unique, auto-generated from `name` |
 | description | TEXT | Optional |
 | is_public | BOOLEAN | If true, no login needed for reads |
 | created_at | TIMESTAMPTZ | |
 | updated_at | TIMESTAMPTZ | |
+
+- Slug is auto-generated via `slugify(name)` on create, regenerated on name update
+- Uniqueness enforced; conflicts resolved by appending `-2`, `-3`, etc.
+- Frontend routes use slug instead of UUID: `/trees/johnson-family/graph`
+- `GET /trees/{tree_id}` accepts either UUID or slug
 
 Deleting a tree cascades to all its persons, stories, relationships, media, and tags.
 
