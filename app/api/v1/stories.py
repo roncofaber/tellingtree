@@ -13,6 +13,7 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.story import StoryCreate, StoryResponse, StoryUpdate
+from app.services.notifications import notify_tree_members
 from app.services.permission import check_tree_access
 from app.api.v1.deps import pagination_params
 
@@ -94,6 +95,9 @@ def create_story(
         if tag is None:
             raise BadRequestError(f"Tag {tid} not found in this tree")
         db.add(StoryTag(story_id=story.id, tag_id=tid))
+
+    notify_tree_members(db, tree_id, current_user.id, "story_created", "story", story.id,
+                        f"{current_user.username} wrote \"{data.title}\"")
 
     db.commit()
     db.refresh(story)

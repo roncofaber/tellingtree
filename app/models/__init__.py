@@ -8,6 +8,7 @@ from app.models.relationship import Relationship
 from app.models.story import Story, StoryPerson, StoryTag
 from app.models.media import Media
 from app.models.tag import Tag
+from app.models.notification import Notification
 
 __all__ = [
     "AuditLog",
@@ -23,4 +24,5 @@ __all__ = [
     "StoryTag",
     "Media",
     "Tag",
+    "Notification",
 ]

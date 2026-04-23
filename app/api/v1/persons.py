@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.person import PersonCreate, PersonResponse, PersonUpdate
 from app.services.audit import log_action
+from app.services.notifications import notify_tree_members
 from app.services.permission import check_tree_access
 from app.api.v1.deps import pagination_params
 
@@ -50,8 +51,10 @@ def create_person(
     person = Person(tree_id=tree_id, **data.model_dump())
     db.add(person)
     db.flush()
-    log_action(db, tree_id, current_user.id, "create", "person", person.id,
-               {"name": f"{data.given_name or ''} {data.family_name or ''}".strip()})
+    person_name = f"{data.given_name or ''} {data.family_name or ''}".strip() or "Unnamed"
+    log_action(db, tree_id, current_user.id, "create", "person", person.id, {"name": person_name})
+    notify_tree_members(db, tree_id, current_user.id, "person_created", "person", person.id,
+                        f"{current_user.username} added {person_name}")
     db.commit()
     db.refresh(person)
     return person

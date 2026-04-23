@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback, useEffect, useRef, lazy, Suspense } fro
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake, AlertTriangle, Search, UserPlus, PenLine } from "lucide-react";
 import { AddPersonDialog } from "@/components/common/AddPersonDialog";
+import { NotificationBell } from "@/components/common/NotificationBell";
 import { genderColor, getFullName } from "@/lib/person";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
@@ -567,6 +568,7 @@ export function TreeDetailPage() {
               </div>
             )}
           </div>
+          <NotificationBell />
           <button
             onClick={() => navigate(`${base}/manage`)}
             title="Tree settings"
