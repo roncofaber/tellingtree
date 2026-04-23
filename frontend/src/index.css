@@ -354,6 +354,16 @@
   height: auto;
 }
 
+/* ─── Interactive Cursors ─────────────────────────────────────────── */
+
+button:not(:disabled),
+[role="tab"],
+[data-slot="tabs-trigger"],
+[data-slot="button"],
+a[href] {
+  cursor: pointer;
+}
+
 /* ─── Page & Tab Transitions ─────────────────────────────────────── */
 
 @keyframes fadeIn {

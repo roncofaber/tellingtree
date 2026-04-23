@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
-import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake, AlertTriangle, Search } from "lucide-react";
+import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake, AlertTriangle, Search, UserPlus, PenLine } from "lucide-react";
+import { AddPersonDialog } from "@/components/common/AddPersonDialog";
 import { genderColor, getFullName } from "@/lib/person";
 import { Breadcrumb } from "@/components/common/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
@@ -41,6 +42,7 @@ function topN(items: string[], n: number): { value: string; count: number }[] {
 function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }) {
   const navigate = useNavigate();
   const base = `/trees/${treeSlug}`;
+  const [addPersonOpen, setAddPersonOpen] = useState(false);
 
   const { data: personsData }     = useQuery({ queryKey: queryKeys.persons.stat(treeId),          queryFn: () => listPersons(treeId, 0, 1),          enabled: !!treeId });
   const { data: storiesData }     = useQuery({ queryKey: queryKeys.stories.stat(treeId),          queryFn: () => listStories(treeId, { limit: 1 }),  enabled: !!treeId });
@@ -172,77 +174,40 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
 
       {/* ── Stat cards ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {/* People */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/people`, { replace: true })}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-muted-foreground">People</span>
-              <Users className="h-4 w-4 text-muted-foreground/50" />
-            </div>
-            <p className="text-3xl font-bold tabular-nums">{personsData?.total ?? "—"}</p>
-            {persons.length > 0 && (() => {
-              const total = persons.length;
-              const colorMap: Record<string, string> = { male: "#3b82f6", female: "#ec4899", other: "#f59e0b", unknown: "#94a3b8" };
-              const entries = Object.entries(stats.genders).sort(([, a], [, b]) => b - a);
-              return (
-                <div className="mt-2 space-y-1.5">
-                  <div className="flex h-1.5 rounded-full overflow-hidden">
-                    {entries.map(([g, n]) => (
-                      <div key={g} style={{ width: `${(n / total) * 100}%`, backgroundColor: colorMap[g] ?? "#94a3b8" }} />
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {entries.map(([g, n]) => (
-                      <span key={g} className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colorMap[g] ?? "#94a3b8" }} />
-                        {n}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-          </CardContent>
-        </Card>
-
-        {/* Places */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/map`, { replace: true })}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-muted-foreground">Places</span>
-              <MapPin className="h-4 w-4 text-muted-foreground/50" />
-            </div>
-            <p className="text-3xl font-bold tabular-nums">{places?.length ?? "—"}</p>
-            {places && places.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-2">
-                {geocodedPlaces.length} of {places.length} geocoded
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Stories */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/stories`, { replace: true })}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-muted-foreground">Stories</span>
-              <BookOpen className="h-4 w-4 text-muted-foreground/50" />
-            </div>
-            <p className="text-3xl font-bold tabular-nums">{storiesData?.total ?? "—"}</p>
-          </CardContent>
-        </Card>
-
-        {/* Media */}
-        <Card className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/media`, { replace: true })}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-muted-foreground">Media</span>
-              <ImageIcon className="h-4 w-4 text-muted-foreground/50" />
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">Photos, documents, audio</p>
-          </CardContent>
-        </Card>
+        {[
+          { label: "People", count: personsData?.total, icon: Users, tab: "people" },
+          { label: "Places", count: places?.length, icon: MapPin, tab: "map" },
+          { label: "Stories", count: storiesData?.total, icon: BookOpen, tab: "stories" },
+          { label: "Media", count: null, icon: ImageIcon, tab: "media" },
+        ].map(({ label, count, icon: Icon, tab }) => (
+          <Card key={tab} className="hover:shadow-sm transition-shadow cursor-pointer" onClick={() => navigate(`${base}/${tab}`, { replace: true })}>
+            <CardContent className="px-4 py-3 flex items-center gap-2">
+              <Icon className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground">{label}</span>
+              {count != null && <span className="text-lg font-bold tabular-nums">{count}</span>}
+            </CardContent>
+          </Card>
+        ))}
       </div>
+
+      {/* Quick actions */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setAddPersonOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
+        >
+          <UserPlus className="h-3.5 w-3.5" />
+          Add person
+        </button>
+        <button
+          onClick={() => navigate(`${base}/stories`, { replace: true })}
+          className="flex items-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
+        >
+          <PenLine className="h-3.5 w-3.5" />
+          Write story
+        </button>
+      </div>
+      <AddPersonDialog open={addPersonOpen} treeId={treeId} onClose={() => setAddPersonOpen(false)} />
 
       <div className="border-t" />
 

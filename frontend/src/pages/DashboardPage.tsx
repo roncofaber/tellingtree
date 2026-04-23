@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { listTrees, createTree } from "@/api/trees";
 import { importGedcomStreaming, type ImportProgress } from "@/api/imports";
 import { queryKeys } from "@/lib/queryKeys";
+import { TreePine, Globe, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +15,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
@@ -71,9 +71,7 @@ export function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Your Trees</h1>
         <Dialog open={dialogOpen} onOpenChange={(o) => { if (!creating) setDialogOpen(o); }}>
-          <DialogTrigger className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-            New Tree
-          </DialogTrigger>
+          <Button onClick={() => setDialogOpen(true)}>+ New Tree</Button>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create a New Tree</DialogTitle>
@@ -124,7 +122,7 @@ export function DashboardPage() {
                     {importProgress.phase === "done" && "Done!"}
                   </p>
                   {importProgress.total && importProgress.current !== undefined && (
-                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                       <div className="h-full rounded-full bg-primary transition-all duration-300"
                         style={{ width: `${Math.round((importProgress.current / importProgress.total) * 100)}%` }} />
                     </div>
@@ -141,32 +139,52 @@ export function DashboardPage() {
       </div>
 
       {trees?.items.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              No trees yet. Create your first family tree to get started.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+          <TreePine className="h-14 w-14 text-muted-foreground/20" />
+          <div>
+            <h2 className="text-lg font-semibold mb-1">No family trees yet</h2>
+            <p className="text-sm text-muted-foreground max-w-sm">Create your first family tree to start preserving your family's stories, photos, and memories.</p>
+          </div>
+          <Button onClick={() => setDialogOpen(true)}>Create your first tree</Button>
+        </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {trees?.items.map((tree) => (
-            <Link key={tree.id} to={`/trees/${tree.slug}`}>
-              <Card className="hover:border-primary transition-colors cursor-pointer h-full">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{tree.name}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {tree.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{tree.description}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Updated {new Date(tree.updated_at).toLocaleDateString()}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {trees?.items.map((tree) => {
+            const updated = new Date(tree.updated_at);
+            const created = new Date(tree.created_at);
+            const daysSinceUpdate = Math.floor((Date.now() - updated.getTime()) / 86400000);
+            const updatedLabel = daysSinceUpdate === 0 ? "Updated today" : daysSinceUpdate === 1 ? "Updated yesterday" : daysSinceUpdate < 30 ? `Updated ${daysSinceUpdate} days ago` : `Updated ${updated.toLocaleDateString()}`;
+
+            return (
+              <Link key={tree.id} to={`/trees/${tree.slug}`}>
+                <Card className="hover:border-primary/50 hover:shadow-md transition-all cursor-pointer h-full group">
+                  <CardContent className="p-5 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                        <TreePine className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base font-semibold leading-tight group-hover:text-primary transition-colors">{tree.name}</h3>
+                        {tree.description && (
+                          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{tree.description}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        {tree.is_public
+                          ? <><Globe className="h-3 w-3" /> Public</>
+                          : <><Lock className="h-3 w-3" /> Private</>
+                        }
+                      </div>
+                      <span className="text-xs text-muted-foreground">{updatedLabel}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
