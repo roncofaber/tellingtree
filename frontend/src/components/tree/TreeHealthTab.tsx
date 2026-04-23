@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listPersons } from "@/api/persons";
@@ -6,8 +6,10 @@ import { listRelationships } from "@/api/relationships";
 import { queryKeys } from "@/lib/queryKeys";
 import { getFullName } from "@/lib/person";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
-import { AlertTriangle, CheckCircle } from "lucide-react";
+import { PersonCompare } from "@/components/tree/PersonCompare";
+import { AlertTriangle, CheckCircle, GitCompareArrows } from "lucide-react";
 import type { Person } from "@/types/person";
 
 interface Issue {
@@ -19,6 +21,7 @@ interface Issue {
 
 export function TreeHealthTab({ treeId }: { treeId: string }) {
   const { treeSlug } = useParams<{ treeSlug: string }>();
+  const [compareIds, setCompareIds] = useState<[string, string] | null>(null);
 
   const { data: personsData, isLoading: pLoad } = useQuery({
     queryKey: queryKeys.persons.full(treeId),
@@ -114,7 +117,28 @@ export function TreeHealthTab({ treeId }: { treeId: string }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">{issues.length} suggestion{issues.length !== 1 ? "s" : ""} to improve your tree data.</p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{issues.length} suggestion{issues.length !== 1 ? "s" : ""} to improve your tree data.</p>
+        <Button variant="outline" size="sm" onClick={() => setCompareIds(["", ""])}>
+          <GitCompareArrows className="h-3.5 w-3.5 mr-1.5" /> Compare
+        </Button>
+      </div>
+
+      {/* Compare panel */}
+      {compareIds && (
+        <div className="rounded-lg border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">Compare persons</h3>
+            <button onClick={() => setCompareIds(null)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+          </div>
+          <PersonCompare
+            treeId={treeId}
+            personAId={compareIds[0] || undefined}
+            personBId={compareIds[1] || undefined}
+            onMerged={() => setCompareIds(null)}
+          />
+        </div>
+      )}
 
       {issues.map((issue, i) => (
         <div key={i} className="rounded-lg border">
@@ -122,6 +146,12 @@ export function TreeHealthTab({ treeId }: { treeId: string }) {
             <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${issue.severity === "warning" ? "text-amber-500" : "text-muted-foreground"}`} />
             <span className="text-sm font-medium">{issue.label}</span>
             <Badge variant="secondary" className="ml-auto text-xs">{issue.persons.length}</Badge>
+            {issue.type === "duplicate" && issue.persons.length === 2 && (
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
+                onClick={() => setCompareIds([issue.persons[0].id, issue.persons[1].id])}>
+                Compare
+              </Button>
+            )}
           </div>
           <div className="px-4 py-2 max-h-[200px] overflow-y-auto">
             <div className="space-y-0.5">

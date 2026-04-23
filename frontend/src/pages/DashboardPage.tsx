@@ -9,7 +9,7 @@ import { TreePine, Globe, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -151,7 +151,6 @@ export function DashboardPage() {
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {trees?.items.map((tree) => {
             const updated = new Date(tree.updated_at);
-            const created = new Date(tree.created_at);
             const daysSinceUpdate = Math.floor((Date.now() - updated.getTime()) / 86400000);
             const updatedLabel = daysSinceUpdate === 0 ? "Updated today" : daysSinceUpdate === 1 ? "Updated yesterday" : daysSinceUpdate < 30 ? `Updated ${daysSinceUpdate} days ago` : `Updated ${updated.toLocaleDateString()}`;
 

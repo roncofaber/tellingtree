@@ -280,7 +280,11 @@ def search_tree(
         .filter(
             Story.tree_id == resolved_id,
             Story.deleted_at.is_(None),
-            Story.title.ilike(pattern),
+            or_(
+                Story.title.ilike(pattern),
+                Story.content.ilike(pattern),
+                Story.event_location.ilike(pattern),
+            ),
         )
         .limit(5)
         .all()

@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef, lazy, Suspense } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { Users, BookOpen, MapPin, Calendar, Globe, Briefcase, Settings, ImageIcon, Cake, AlertTriangle, Search, UserPlus, PenLine } from "lucide-react";
 import { AddPersonDialog } from "@/components/common/AddPersonDialog";
@@ -17,11 +17,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { PlacesMap } from "@/components/tree/PlacesMap";
-import { GraphTab }         from "@/components/tree/GraphTab";
 import { PersonsTab }       from "@/components/tree/PersonsTab";
-import { StoriesTab }       from "@/components/tree/StoriesTab";
-import { MapTab }           from "@/components/tree/MapTab";
 import { MediaTab }         from "@/components/tree/MediaTab";
+
+const GraphTab  = lazy(() => import("@/components/tree/GraphTab").then(m => ({ default: m.GraphTab })));
+const StoriesTab = lazy(() => import("@/components/tree/StoriesTab").then(m => ({ default: m.StoriesTab })));
+const MapTab    = lazy(() => import("@/components/tree/MapTab").then(m => ({ default: m.MapTab })));
 
 // ─── Dashboard helpers ───────────────────────────────────────────────────────
 
@@ -591,16 +592,16 @@ export function TreeDetailPage() {
           <DashboardTab treeId={treeId} treeSlug={treeSlug!} />
         </TabsContent>
         <TabsContent value="graph">
-          <GraphTab treeId={treeId} />
+          <Suspense fallback={<LoadingSpinner />}><GraphTab treeId={treeId} /></Suspense>
         </TabsContent>
         <TabsContent value="map">
-          <MapTab treeId={treeId} />
+          <Suspense fallback={<LoadingSpinner />}><MapTab treeId={treeId} /></Suspense>
         </TabsContent>
         <TabsContent value="people">
           <PersonsTab treeId={treeId} />
         </TabsContent>
         <TabsContent value="stories">
-          <StoriesTab treeId={treeId} />
+          <Suspense fallback={<LoadingSpinner />}><StoriesTab treeId={treeId} /></Suspense>
         </TabsContent>
         <TabsContent value="media">
           <MediaTab treeId={treeId} />
