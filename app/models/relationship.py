@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import String, Date, DateTime, ForeignKey, Text, CheckConstraint
+from sqlalchemy import String, Date, DateTime, ForeignKey, Text, CheckConstraint, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -11,6 +11,7 @@ class Relationship(Base):
     __tablename__ = "relationships"
     __table_args__ = (
         CheckConstraint("person_a_id != person_b_id", name="different_persons"),
+        UniqueConstraint("tree_id", "person_a_id", "person_b_id", "relationship_type", name="uq_relationship"),
     )
 
     tree_id: Mapped[uuid.UUID] = mapped_column(

@@ -55,18 +55,21 @@ export function MembersTab({ treeId }: Props) {
     setLookupLoading(true);
     setLookupResult(null);
     setLookupError(false);
+    let cancelled = false;
     debounceRef.current = setTimeout(async () => {
       try {
         const result = await lookupUser(q);
-        setLookupResult(result);
-        setLookupError(false);
+        if (!cancelled) { setLookupResult(result); setLookupError(false); }
       } catch {
-        setLookupResult(null);
-        setLookupError(true);
+        if (!cancelled) { setLookupResult(null); setLookupError(true); }
       } finally {
-        setLookupLoading(false);
+        if (!cancelled) setLookupLoading(false);
       }
     }, 350);
+    return () => {
+      cancelled = true;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [username]);
 
   const { data: members, isLoading } = useQuery({

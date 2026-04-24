@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -89,29 +90,26 @@ def create_relationship(
 
     rel = Relationship(tree_id=tree_id, **data.model_dump())
     db.add(rel)
-    db.commit()
-    db.refresh(rel)
 
     inverse_type = get_inverse(data.relationship_type)
     if inverse_type:
-        already_exists = db.query(Relationship).filter(
-            Relationship.tree_id == tree_id,
-            Relationship.person_a_id == data.person_b_id,
-            Relationship.person_b_id == data.person_a_id,
-            Relationship.relationship_type == inverse_type,
-        ).first()
-        if not already_exists:
-            inverse = Relationship(
-                tree_id=tree_id,
-                person_a_id=data.person_b_id,
-                person_b_id=data.person_a_id,
-                relationship_type=inverse_type,
-                start_date=data.start_date,
-                end_date=data.end_date,
-                notes=data.notes,
-            )
-            db.add(inverse)
-            db.commit()
+        inverse = Relationship(
+            tree_id=tree_id,
+            person_a_id=data.person_b_id,
+            person_b_id=data.person_a_id,
+            relationship_type=inverse_type,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            notes=data.notes,
+        )
+        db.add(inverse)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise BadRequestError("This relationship already exists.")
+    db.refresh(rel)
 
     return rel
 
