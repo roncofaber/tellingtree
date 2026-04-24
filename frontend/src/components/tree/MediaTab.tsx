@@ -5,11 +5,13 @@ import { listMedia, uploadMedia, deleteMedia, fetchMediaBlob } from "@/api/media
 import { AuthImage } from "@/components/common/AuthImage";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { MediaGridSkeleton } from "@/components/common/Skeleton";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { Download, Trash2 } from "lucide-react";
 import type { Media } from "@/types/media";
 
 function formatSize(bytes: number | null): string {
@@ -25,6 +27,8 @@ export function MediaTab({ treeId }: { treeId: string }) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 24;
 
   const { data: items, isLoading } = useQuery({
     queryKey: queryKeys.media.all(treeId),
@@ -58,12 +62,15 @@ export function MediaTab({ treeId }: { treeId: string }) {
     return list;
   }, [items, typeFilter, search]);
 
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) uploadMut.mutate(file);
   };
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <MediaGridSkeleton count={8} />;
 
   const isImage = (m: Media) => m.mime_type?.startsWith("image/");
 
@@ -72,8 +79,8 @@ export function MediaTab({ treeId }: { treeId: string }) {
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex flex-wrap gap-2 items-center flex-1 min-w-0">
-          <Input placeholder="Search files…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 w-full sm:w-48" />
-          <Select value={typeFilter} onValueChange={v => { if (v !== null) setTypeFilter(v); }}>
+          <Input placeholder="Search files…" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} className="h-8 w-full sm:w-48" />
+          <Select value={typeFilter} onValueChange={v => { if (v !== null) { setTypeFilter(v); setPage(0); } }}>
             <SelectTrigger className="h-8 w-36">
               <span className="text-sm">{typeFilter === "all" ? "All types" : typeFilter.charAt(0).toUpperCase() + typeFilter.slice(1)}</span>
             </SelectTrigger>
@@ -99,7 +106,7 @@ export function MediaTab({ treeId }: { treeId: string }) {
         <p className="text-center text-muted-foreground py-12">{search || typeFilter !== "all" ? "No files match." : "No media yet. Upload photos, documents, or audio."}</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {filtered.map(m => (
+          {paginated.map(m => (
             <div key={m.id} className="group border rounded-lg overflow-hidden bg-card hover:shadow-md transition-shadow">
               {/* Preview */}
               <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
@@ -122,19 +129,34 @@ export function MediaTab({ treeId }: { treeId: string }) {
                     <Badge variant="outline" className="text-[9px] px-1 py-0">{m.media_type}</Badge>
                     <span className="text-[10px] text-muted-foreground">{formatSize(m.size_bytes)}</span>
                   </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button onClick={async () => {
                       const url = await fetchMediaBlob(treeId, m.id);
                       const a = document.createElement("a");
                       a.href = url; a.download = m.original_filename; a.click();
                       URL.revokeObjectURL(url);
-                    }} className="text-[10px] text-primary hover:underline">DL</button>
-                    <button onClick={() => setConfirmDeleteId(m.id)} className="text-[10px] text-destructive hover:underline" disabled={deleteMut.isPending}>Delete</button>
+                    }} className="flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors" title="Download">
+                      <Download className="h-3 w-3" />
+                    </button>
+                    <button onClick={() => setConfirmDeleteId(m.id)} className="flex items-center justify-center h-7 w-7 rounded-md hover:bg-destructive/15 text-destructive/70 hover:text-destructive transition-colors disabled:opacity-50" disabled={deleteMut.isPending} title="Delete">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-xs text-muted-foreground">Page {page + 1} of {totalPages}</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(0)}>«</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2" disabled={page === 0} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-3.5 w-3.5" /></Button>
+            <Button variant="outline" size="sm" className="h-7 px-2" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-3.5 w-3.5" /></Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</Button>
+          </div>
         </div>
       )}
       <ConfirmDialog

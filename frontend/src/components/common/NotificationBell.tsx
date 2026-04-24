@@ -14,7 +14,7 @@ export function NotificationBell() {
 
   const { data: trees } = useQuery({
     queryKey: queryKeys.trees.all(),
-    queryFn: listTrees,
+    queryFn: () => listTrees(),
     staleTime: 60_000,
   });
 
@@ -68,7 +68,7 @@ export function NotificationBell() {
   const handleClick = (n: Notification) => {
     if (!n.read_at) markReadMut.mutate(n.id);
     setOpen(false);
-    const slug = trees?.find(t => t.id === n.tree_id)?.slug;
+    const slug = trees?.items?.find(t => t.id === n.tree_id)?.slug;
     if (!slug || !n.entity_id) return;
     if (n.entity_type === "person") navigate(`/trees/${slug}/people/${n.entity_id}`);
     else if (n.entity_type === "story") navigate(`/trees/${slug}/stories/${n.entity_id}`);
@@ -90,7 +90,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 right-0 z-50 w-80 rounded-lg border bg-popover shadow-lg overflow-hidden">
+        <div className="absolute top-full mt-2 right-0 z-50 w-80 max-w-[calc(100vw-1rem)] rounded-lg border bg-popover shadow-lg overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b">
             <span className="text-sm font-semibold">Notifications</span>
             {unread > 0 && (

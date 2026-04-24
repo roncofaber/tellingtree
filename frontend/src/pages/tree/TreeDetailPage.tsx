@@ -318,9 +318,9 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
                   <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completeness}%` }} />
                 </div>
                 <div className="grid grid-cols-3 gap-x-2 text-[11px] text-muted-foreground">
-                  <span>{stats.withBirthDate}/{persons.length} dated</span>
-                  <span>{stats.withLocation}/{persons.length} located</span>
-                  <span>{stats.withBio}/{persons.length} with bio</span>
+                  <span className="truncate">{stats.withBirthDate}/{persons.length} dated</span>
+                  <span className="truncate">{stats.withLocation}/{persons.length} located</span>
+                  <span className="truncate">{stats.withBio}/{persons.length} with bio</span>
                 </div>
               </div>
             )}
@@ -405,7 +405,10 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
         <div className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent stories</h2>
           {recentStories.length === 0
-            ? <p className="text-sm text-muted-foreground italic">No stories yet.</p>
+            ? <div className="flex flex-col items-center gap-2 py-4">
+                <p className="text-sm text-muted-foreground italic">No stories yet.</p>
+                <button onClick={() => navigate(`${base}/stories`, { replace: true })} className="text-xs text-primary hover:underline">+ Write your first story</button>
+              </div>
             : (
               <div className="space-y-0.5">
                 {recentStories.map((s) => {

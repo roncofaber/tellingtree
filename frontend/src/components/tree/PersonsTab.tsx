@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { TableRowsSkeleton } from "@/components/common/Skeleton";
 import { AddPersonDialog } from "@/components/common/AddPersonDialog";
 import type { Person } from "@/types/person";
 
@@ -99,7 +99,7 @@ export function PersonsTab({ treeId }: { treeId: string }) {
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice(page * pageSize, (page + 1) * pageSize);
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <TableRowsSkeleton rows={8} />;
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-3">

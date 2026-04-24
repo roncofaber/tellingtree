@@ -42,7 +42,7 @@ router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_ad
 def get_admin_stats(db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     all_users = db.query(User).all()
-    all_trees = db.query(Tree).filter(Tree.deleted_at.is_(None)).all()
+    all_trees = db.query(Tree).all()
     all_invites = db.query(RegistrationInvite).all()
     return AdminStats(
         users_total=len(all_users),

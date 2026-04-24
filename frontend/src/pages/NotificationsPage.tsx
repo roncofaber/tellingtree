@@ -29,7 +29,7 @@ export function NotificationsPage() {
 
   const { data: trees } = useQuery({
     queryKey: queryKeys.trees.all(),
-    queryFn: listTrees,
+    queryFn: () => listTrees(),
     staleTime: 60_000,
   });
 

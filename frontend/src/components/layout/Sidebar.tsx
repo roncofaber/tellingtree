@@ -38,22 +38,14 @@ export function Sidebar({ collapsed, onToggle }: Props) {
   const c = collapsed;
 
   return (
-    <div className="flex flex-col h-full py-4 w-full overflow-hidden">
+    <div className="flex flex-col h-full flex-1 min-h-0 pt-4 w-full overflow-hidden">
 
       {/* Brand */}
       <div className={`px-3 mb-4 ${c ? "flex justify-center" : ""}`}>
-        <div className="flex items-center gap-2">
-          <Link to="/dashboard" title="Dashboard">
-            <TreePine className="h-5 w-5 text-primary shrink-0" />
-          </Link>
-          {!c && <span className="font-bold text-base flex-1 whitespace-nowrap">TellingTree</span>}
-          {onToggle && (
-            <button onClick={onToggle} title={c ? "Expand sidebar" : "Collapse sidebar"}
-              className="flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors shrink-0">
-              {c ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
-            </button>
-          )}
-        </div>
+        <Link to="/dashboard" title="Dashboard" className="flex items-center gap-2 min-w-0">
+          <TreePine className="h-5 w-5 text-primary shrink-0" />
+          {!c && <span className="font-bold text-base whitespace-nowrap">TellingTree</span>}
+        </Link>
         {!c && <p className="text-xs text-muted-foreground mt-0.5 ml-7 whitespace-nowrap">Family stories, preserved</p>}
       </div>
 
@@ -120,22 +112,21 @@ export function Sidebar({ collapsed, onToggle }: Props) {
 
       <Separator className={`my-3 ${c ? "mx-2" : ""}`} />
 
-      {/* Admin link (superadmins only) */}
-      {user?.is_superadmin && (
-        <div className={`mb-1 ${c ? "px-1 flex justify-center" : "px-3"}`}>
+      {/* Account chip (dropdown) */}
+      <div className={`${c ? "px-1 flex flex-col items-center gap-1.5" : "px-3 flex flex-col gap-0.5"}`}>
+        {user?.is_superadmin && (
           <NavLink to="/admin" title="Admin" className={({ isActive }) =>
-            `flex items-center ${c ? "justify-center h-8 w-8" : "gap-2.5 px-3 py-2"} rounded-md text-sm transition-colors ${
+            `flex items-center ${c ? "justify-center h-9 w-9" : "gap-2.5 px-2 py-1"} rounded-md text-sm transition-colors ${
               isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             }`
           }>
-            <Shield className="h-4 w-4 shrink-0" />
-            {!c && <span className="whitespace-nowrap">Admin</span>}
+            <div className={c ? "" : "w-8 h-8 flex items-center justify-center shrink-0"}>
+              <Shield className="h-4 w-4" />
+            </div>
+            {!c && <span>Admin</span>}
           </NavLink>
-        </div>
-      )}
-
-      {/* Account chip (dropdown) + theme toggle */}
-      <div className={`${c ? "px-1 flex flex-col items-center gap-1.5 mb-3" : "px-3 mb-4 flex items-center gap-1.5"}`}>
+        )}
+        <div className={c ? "flex flex-col items-center gap-1.5" : "flex items-center"}>
         <DropdownMenu>
           <DropdownMenuTrigger
             title={c ? (user?.full_name || user?.username || "Account") : undefined}
@@ -175,15 +166,18 @@ export function Sidebar({ collapsed, onToggle }: Props) {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            {user?.is_superadmin && (
-              <DropdownMenuItem onClick={() => navigate("/admin")}>
-                <Shield className="h-4 w-4 mr-2" />
-                Admin
-              </DropdownMenuItem>
-            )}
             <DropdownMenuItem onClick={() => navigate("/settings")}>
               <Settings className="h-4 w-4 mr-2" />
               Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const isDark = document.documentElement.classList.contains("dark");
+              const next = isDark ? "light" : "dark";
+              setTheme(next);
+              setThemeState(next);
+            }}>
+              {themeState === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
+              {themeState === "dark" ? "Light mode" : "Dark mode"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
@@ -193,19 +187,26 @@ export function Sidebar({ collapsed, onToggle }: Props) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <button
-          onClick={() => {
-            const isDark = document.documentElement.classList.contains("dark");
-            const next = isDark ? "light" : "dark";
-            setTheme(next);
-            setThemeState(next);
-          }}
-          title={`Switch to ${themeState === "dark" ? "light" : "dark"} mode`}
-          className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors shrink-0"
-        >
-          {themeState === "dark" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
-        </button>
+        </div>
       </div>
+
+      {/* Collapse button — Linear/Slack style */}
+      {onToggle && (
+        <div className="border-t mt-1">
+          <button
+            onClick={onToggle}
+            title={c ? "Expand sidebar" : "Collapse sidebar"}
+            className={`flex items-center gap-2 w-full px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors ${c ? "justify-center" : ""}`}
+          >
+            {c ? <PanelLeftOpen className="h-3.5 w-3.5" /> : (
+              <>
+                <PanelLeftClose className="h-3.5 w-3.5 shrink-0" />
+                <span>Collapse</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -700,7 +700,7 @@ export function TreeManagePage() {
                       value={transferTargetId || undefined}
                       onValueChange={(v) => { if (v !== null) setTransferTargetId(v); }}
                     >
-                      <SelectTrigger className="w-64 h-9">
+                      <SelectTrigger className="w-full sm:w-64 h-9">
                         <SelectValue placeholder="Select new owner…" />
                       </SelectTrigger>
                       <SelectContent>

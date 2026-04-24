@@ -73,6 +73,7 @@ function StoryTags({ treeId, storyId, tagIds }: { treeId: string; storyId: strin
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [editingTag, setEditingTag] = useState<{ id: string; name: string; color: string } | null>(null);
+  const [confirmDeleteTagId, setConfirmDeleteTagId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { data: allTags } = useQuery({
@@ -176,7 +177,7 @@ function StoryTags({ treeId, storyId, tagIds }: { treeId: string; storyId: strin
             <Button size="sm" className="h-7 px-2" onClick={() => updateTagMut.mutate()} disabled={!editingTag.name.trim()}>
               <Check className="h-3.5 w-3.5" />
             </Button>
-            <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => deleteTagMut.mutate(editingTag.id)}>
+            <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => setConfirmDeleteTagId(editingTag.id)} disabled={deleteTagMut.isPending}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
             <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingTag(null)}>
@@ -240,7 +241,7 @@ function StoryTags({ treeId, storyId, tagIds }: { treeId: string; storyId: strin
               autoComplete="off"
             />
             {(filteredAvailable.length > 0 || canCreate) && newTagName.trim() && (
-              <div className="absolute z-50 mt-1 w-64 rounded-lg border bg-popover shadow-lg overflow-hidden">
+              <div className="absolute z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-lg border bg-popover shadow-lg overflow-hidden">
                 {filteredAvailable.slice(0, 5).map(tag => (
                   <button
                     key={tag.id}
@@ -268,6 +269,15 @@ function StoryTags({ treeId, storyId, tagIds }: { treeId: string; storyId: strin
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmDeleteTagId !== null}
+        onClose={() => setConfirmDeleteTagId(null)}
+        onConfirm={() => { if (confirmDeleteTagId) deleteTagMut.mutate(confirmDeleteTagId); setConfirmDeleteTagId(null); }}
+        title="Delete tag?"
+        message="This tag will be permanently removed from all stories in this tree."
+        confirmLabel="Delete"
+        destructive
+      />
     </div>
   );
 }

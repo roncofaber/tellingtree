@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { StoryListSkeleton } from "@/components/common/Skeleton";
 import { DeleteIcon } from "@/components/common/ActionIcons";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { StoryEditor, extractMentionPersonIds } from "@/components/editor/StoryEditor";
@@ -151,7 +151,7 @@ export function StoriesTab({ treeId }: { treeId: string }) {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <StoryListSkeleton rows={5} />;
 
   return (
     <div className="space-y-3">
@@ -248,7 +248,7 @@ export function StoriesTab({ treeId }: { treeId: string }) {
           <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Write a Story</DialogTitle></DialogHeader>
             <form onSubmit={e => { e.preventDefault(); createMut.mutate(); }} className="space-y-4">
-              <div className="space-y-2"><Label>Title</Label><Input value={title} onChange={e => setTitle(e.target.value)} required /></div>
+              <div className="space-y-2"><Label>Title</Label><Input value={title} onChange={e => setTitle(e.target.value)} required autoFocus /></div>
               <div className="space-y-2">
                 <Label>Content</Label>
                 <StoryEditor
@@ -271,7 +271,16 @@ export function StoriesTab({ treeId }: { treeId: string }) {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-center text-muted-foreground py-8">{search ? "No stories match your search." : "No stories yet."}</p>
+        <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <p className="text-sm text-muted-foreground">
+            {search || tagFilter !== "all" || personFilter !== "all" ? "No stories match your filters." : "No stories yet."}
+          </p>
+          {!search && tagFilter === "all" && personFilter === "all" && (
+            <button onClick={() => setDialogOpen(true)} className="text-sm text-primary hover:underline">
+              + Write your first story
+            </button>
+          )}
+        </div>
       ) : (
         <div className="space-y-2">
           {paginated.map(s => (

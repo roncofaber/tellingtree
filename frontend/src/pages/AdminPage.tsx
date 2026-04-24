@@ -17,9 +17,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { TableRowsSkeleton } from "@/components/common/Skeleton";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { Users, Trees, Globe, Mail, ShieldCheck, Clock } from "lucide-react";
-import type { User } from "@/types/api";
+import { Users, Trees, Mail, ShieldCheck, Clock } from "lucide-react";
 import type { AdminStats } from "@/api/admin";
 
 const adminKeys = {
@@ -92,6 +92,8 @@ function UsersTab() {
 
   const [search,         setSearch]         = useState("");
   const [statusFilter,   setStatusFilter]   = useState<"all" | "pending" | "active" | "superadmin">("all");
+  const [page,           setPage]           = useState(0);
+  const PAGE_SIZE = 25;
   const [rejectTarget,   setRejectTarget]   = useState<{ id: string; username: string } | null>(null);
   const [deleteTarget,   setDeleteTarget]   = useState<{ id: string; username: string } | null>(null);
   const [promoteTarget,  setPromoteTarget]  = useState<{ id: string; username: string } | null>(null);
@@ -120,8 +122,10 @@ function UsersTab() {
   });
 
   const pendingCount = (users ?? []).filter(u => !u.is_approved).length;
+  const totalPages   = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated    = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <TableRowsSkeleton rows={8} />;
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-3">
@@ -131,12 +135,12 @@ function UsersTab() {
           <Input
             placeholder="Search by username or email…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(0); }}
             className="h-8 w-full sm:w-56"
           />
           <div className="flex gap-1">
             {(["all", "pending", "active", "superadmin"] as const).map(f => (
-              <button key={f} onClick={() => setStatusFilter(f)}
+              <button key={f} onClick={() => { setStatusFilter(f); setPage(0); }}
                 className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${statusFilter === f ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted"}`}>
                 {f === "all" ? `All (${users?.length ?? 0})` : f === "pending" ? `Pending${pendingCount > 0 ? ` (${pendingCount})` : ""}` : f.charAt(0).toUpperCase() + f.slice(1)}
               </button>
@@ -175,7 +179,7 @@ function UsersTab() {
               <col className="w-[24%]" />
             </colgroup>
             <TableBody>
-              {filtered.map(u => (
+              {paginated.map(u => (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium">
                     {u.username}
@@ -241,6 +245,21 @@ function UsersTab() {
           </Table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between shrink-0 px-1">
+          <span className="text-xs text-muted-foreground">
+            Page {page + 1} of {totalPages} · {filtered.length} users
+          </span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(0)}>«</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹ Prev</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next ›</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</Button>
+          </div>
+        </div>
+      )}
 
       {/* Password reset link overlay */}
       {resetUrl && (

@@ -36,7 +36,7 @@ export function Layout() {
               <SheetTrigger className="flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                 <Menu className="h-4 w-4" />
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0">
+              <SheetContent side="left" className="w-64 p-0 overflow-hidden">
                 <Sidebar collapsed={false} />
               </SheetContent>
             </Sheet>

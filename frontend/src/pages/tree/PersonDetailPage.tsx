@@ -784,7 +784,7 @@ export function PersonDetailPage() {
         if (photos.length === 0) return null;
         return (
           <SectionCard title="Photos">
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               {photos.map(m => (
                 <div key={m.id} className="aspect-square rounded-lg overflow-hidden border">
                   <AuthImage treeId={treeId!} mediaId={m.id} alt={m.original_filename} className="w-full h-full object-cover" />
