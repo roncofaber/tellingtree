@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,33 @@ from app.services.storage import (
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+class UserLookupResponse(BaseModel):
+    id: uuid.UUID
+    username: str
+    full_name: str | None
+    has_avatar: bool
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/lookup", response_model=UserLookupResponse)
+def lookup_user(
+    username: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check whether a username exists. Used by the invite dialog for live validation."""
+    user = db.query(User).filter(User.username == username, User.is_approved == True).first()  # noqa: E712
+    if user is None:
+        raise NotFoundError("User not found")
+    return UserLookupResponse(
+        id=user.id,
+        username=user.username,
+        full_name=user.full_name,
+        has_avatar=user.avatar_path is not None,
+    )
 
 
 @router.get("/me", response_model=UserResponse)

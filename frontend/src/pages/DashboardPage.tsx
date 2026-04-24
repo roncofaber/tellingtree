@@ -19,6 +19,7 @@ import {
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { NotificationBell } from "@/components/common/NotificationBell";
+import { Skeleton } from "@/components/common/Skeleton";
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
@@ -63,7 +64,6 @@ export function DashboardPage() {
     } finally { setCreating(false); }
   };
 
-  if (isLoading) return <LoadingSpinner />;
   if (error)
     return <ErrorMessage message={error instanceof Error ? error.message : "Failed to load trees"} />;
 
@@ -143,7 +143,25 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {trees?.items.length === 0 ? (
+      {isLoading ? (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-xl border bg-card p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <Skeleton className="h-10 w-10 rounded-lg shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : trees?.items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
           <TreePine className="h-14 w-14 text-muted-foreground/20" />
           <div>
@@ -152,7 +170,7 @@ export function DashboardPage() {
           </div>
           <Button onClick={() => setDialogOpen(true)}>Create your first tree</Button>
         </div>
-      ) : (
+      ) : isLoading ? null : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {trees?.items.map((tree) => {
             const updated = new Date(tree.updated_at);

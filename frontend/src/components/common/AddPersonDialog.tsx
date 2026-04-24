@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { createPerson, listPersons } from "@/api/persons";
 import { createRelationship, listPersonRelationships } from "@/api/relationships";
 import { queryKeys } from "@/lib/queryKeys";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,11 +73,11 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
     enabled: open,
   });
 
-  // Fetch anchor person's relationships to find parents (for sibling)
+  // Fetch anchor person's relationships (for sibling parent resolution + child co-parent)
   const { data: anchorRels } = useQuery({
     queryKey: queryKeys.relationships.forPerson(treeId, relationship?.anchorId ?? ""),
     queryFn: () => listPersonRelationships(treeId, relationship?.anchorId ?? ""),
-    enabled: open && relationship?.relation === "sibling" && !!relationship?.anchorId,
+    enabled: open && (relationship?.relation === "sibling" || relationship?.relation === "child") && !!relationship?.anchorId,
   });
 
   const anchorParents = useMemo(() => {
@@ -89,10 +90,18 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
       .map(r => r.relationship_type === "parent" ? r.person_a_id : r.person_b_id);
   }, [anchorRels, relationship]);
 
-  // Auto-select all parents when they load
+  const anchorSpouses = useMemo(() => {
+    if (!anchorRels || !relationship?.anchorId) return [];
+    return anchorRels
+      .filter(r => r.relationship_type === "spouse" || r.relationship_type === "partner")
+      .map(r => r.person_a_id === relationship.anchorId ? r.person_b_id : r.person_a_id);
+  }, [anchorRels, relationship]);
+
+  // Auto-select shared parents (sibling) or co-parents (child) when they load
   const [parentsInitialized, setParentsInitialized] = useState(false);
-  if (anchorParents.length > 0 && !parentsInitialized) {
-    setSiblingParentIds(anchorParents);
+  const initList = relationship?.relation === "child" ? anchorSpouses : anchorParents;
+  if (initList.length > 0 && !parentsInitialized) {
+    setSiblingParentIds(initList);
     setParentsInitialized(true);
   }
 
@@ -119,13 +128,15 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
     return `Similar person${matches.length > 1 ? "s" : ""} already in this tree: ${names.join(", ")}${matches.length > 3 ? ` and ${matches.length - 3} more` : ""}`;
   }, [mode, givenName, familyName, persons]);
 
+  const normalize = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
   const filteredPersons = useMemo(() => {
-    const q = linkSearch.trim().toLowerCase();
-    if (!q) return persons.slice(0, 10);
+    const q = normalize(linkSearch.trim());
+    if (!q) return [];
     return persons
       .filter(p => {
-        const name = [p.given_name, p.family_name].filter(Boolean).join(" ").toLowerCase();
-        return name.includes(q);
+        const name = [p.given_name, p.family_name].filter(Boolean).join(" ");
+        return normalize(name).includes(q);
       })
       .slice(0, 10);
   }, [persons, linkSearch]);
@@ -171,6 +182,11 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
           }
         } else if (rel) {
           await createRelationship(treeId, rel);
+          if (relationship.relation === "child") {
+            for (const pid of siblingParentIds) {
+              await createRelationship(treeId, { person_a_id: pid, person_b_id: linkPersonId, relationship_type: "parent" });
+            }
+          }
         }
         return;
       }
@@ -203,6 +219,11 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
             ? { person_a_id: relationship.anchorId, person_b_id: p.id, relationship_type: coupleType, start_date: relStart || undefined, end_date: relEnd || undefined }
             : { person_a_id: p.id, person_b_id: relationship.anchorId, relationship_type: "parent" };
           await createRelationship(treeId, rel);
+          if (relationship.relation === "child") {
+            for (const pid of siblingParentIds) {
+              await createRelationship(treeId, { person_a_id: pid, person_b_id: p.id, relationship_type: "parent" });
+            }
+          }
         }
       }
     },
@@ -262,34 +283,47 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
             <div className="space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs">Search person</Label>
-                <Input
-                  value={linkSearch}
-                  onChange={e => setLinkSearch(e.target.value)}
-                  placeholder="Type a name…"
-                  autoFocus
-                />
-              </div>
-              <div className="space-y-1 max-h-[240px] overflow-y-auto">
-                {filteredPersons.map(p => {
-                  const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
-                  const year = p.birth_date?.slice(0, 4);
-                  const selected = linkPersonId === p.id;
-                  return (
+                {linkPersonId ? (
+                  <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-primary/10 text-primary">
+                    <span className="text-sm font-medium flex-1 truncate">{linkSearch}</span>
                     <button
-                      key={p.id}
                       type="button"
-                      onClick={() => setLinkPersonId(p.id)}
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-left rounded-md transition-colors ${
-                        selected ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "hover:bg-muted"
-                      }`}
+                      onClick={() => { setLinkPersonId(""); setLinkSearch(""); }}
+                      className="shrink-0 text-primary/60 hover:text-primary transition-colors"
                     >
-                      <span className="font-medium truncate">{name}</span>
-                      {year && <span className="text-xs text-muted-foreground ml-auto">b. {year}</span>}
+                      <X className="h-3.5 w-3.5" />
                     </button>
-                  );
-                })}
-                {filteredPersons.length === 0 && (
-                  <p className="text-xs text-muted-foreground py-4 text-center">No matches found.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Input
+                      value={linkSearch}
+                      onChange={e => setLinkSearch(e.target.value)}
+                      placeholder="Type a name…"
+                      autoFocus
+                    />
+                    {linkSearch.trim() && (
+                      <div className="rounded-lg border bg-muted/40 overflow-hidden">
+                        {filteredPersons.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-3">No matches found.</p>
+                        ) : filteredPersons.map(p => {
+                          const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
+                          const year = p.birth_date?.slice(0, 4);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => { setLinkPersonId(p.id); setLinkSearch(name); }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                            >
+                              <span className="font-medium truncate flex-1">{name}</span>
+                              {year && <span className="text-xs text-muted-foreground shrink-0">b. {year}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
               {submitted && !linkPersonId && <p className="text-xs text-destructive">Select a person to link.</p>}
@@ -378,6 +412,29 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1"><Label className="text-xs">Start Date <span className="text-muted-foreground">(optional)</span></Label><Input type="date" value={relStart} onChange={(e) => setRelStart(e.target.value)} /></div>
                 <div className="space-y-1"><Label className="text-xs">End Date <span className="text-muted-foreground">(if ended)</span></Label><Input type="date" value={relEnd} onChange={(e) => setRelEnd(e.target.value)} /></div>
+              </div>
+            </fieldset>
+          )}
+
+          {relationship?.relation === "child" && anchorSpouses.length > 0 && (
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Other Parent</legend>
+              <p className="text-xs text-muted-foreground">Select which partner(s) of {relationship.anchorName} are also a parent.</p>
+              <div className="space-y-1">
+                {anchorSpouses.map(pid => (
+                  <label key={pid} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={siblingParentIds.includes(pid)}
+                      onChange={e => {
+                        if (e.target.checked) setSiblingParentIds(prev => [...prev, pid]);
+                        else setSiblingParentIds(prev => prev.filter(id => id !== pid));
+                      }}
+                      className="rounded"
+                    />
+                    {personName(pid)}
+                  </label>
+                ))}
               </div>
             </fieldset>
           )}

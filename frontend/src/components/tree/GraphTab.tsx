@@ -601,6 +601,14 @@ export function GraphTab({ treeId }: { treeId: string }) {
   const [rootPersonId,     setRootPersonId]     = useState<string | null>(urlRoot ?? settings.defaultRootPersonId);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [depth, setDepth] = useState(settings.maxDepth || 3);
+
+  useEffect(() => {
+    function onKeydown(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelectedPersonId(null);
+    }
+    document.addEventListener("keydown", onKeydown);
+    return () => document.removeEventListener("keydown", onKeydown);
+  }, []);
   const [viewMode, setViewMode] = useState<"tree" | "pedigree">("tree");
   const chartRef = useRef<f3.Chart | null>(null);
 

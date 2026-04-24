@@ -19,6 +19,7 @@ import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { PlacesMap } from "@/components/tree/PlacesMap";
 import { PeopleTabWrapper } from "@/components/tree/PeopleTabWrapper";
 import { MediaTab }         from "@/components/tree/MediaTab";
+import { useTreeTabShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 const GraphTab  = lazy(() => import("@/components/tree/GraphTab").then(m => ({ default: m.GraphTab })));
 const StoriesTab = lazy(() => import("@/components/tree/StoriesTab").then(m => ({ default: m.StoriesTab })));
@@ -482,12 +483,16 @@ export function TreeDetailPage() {
   const treeId = tree?.id;
   const base = `/trees/${treeSlug}`;
 
+  useTreeTabShortcuts(navigate, base);
+
   const { data: pCount } = useQuery({ queryKey: queryKeys.persons.stat(treeId!),      queryFn: () => listPersons(treeId!, 0, 1),        enabled: !!treeId });
   const { data: sCount } = useQuery({ queryKey: queryKeys.stories.stat(treeId!),      queryFn: () => listStories(treeId!, { limit: 1 }), enabled: !!treeId });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const mobileSearchRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -495,8 +500,15 @@ export function TreeDetailPage() {
     function handleClick(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
     }
+    function handleKeydown(e: KeyboardEvent) {
+      if (e.key === "Escape") { setSearchOpen(false); setSearchQuery(""); setMobileSearchOpen(false); }
+    }
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeydown);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeydown);
+    };
   }, []);
 
   const handleSearchChange = useCallback((val: string) => {
@@ -536,15 +548,15 @@ export function TreeDetailPage() {
           <>
             {/* Search */}
             <div ref={searchRef} className="relative hidden sm:block">
-              <div className="flex items-center gap-1 border border-input rounded-md px-2 bg-background">
-                <Search className="h-3.5 w-3.5 text-muted-foreground" />
+              <div className="flex items-center gap-1.5 border border-input rounded-md px-2.5 bg-background">
+                <Search className="h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={e => handleSearchChange(e.target.value)}
                   onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
                   placeholder="Search… (Ctrl+K)"
-                  className="h-7 w-32 sm:w-36 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                  className="h-9 w-32 sm:w-36 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
               {searchOpen && searchResults.length > 0 && (
@@ -568,15 +580,64 @@ export function TreeDetailPage() {
               )}
             </div>
             <button
+              className="sm:hidden shrink-0 flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+              title="Search"
+              onClick={() => { setMobileSearchOpen(o => !o); setTimeout(() => mobileSearchRef.current?.focus(), 50); }}
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <button
               onClick={() => navigate(`${base}/manage`)}
               title="Tree settings"
-              className="shrink-0 flex items-center justify-center h-7 w-7 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+              className="shrink-0 flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
             >
-              <Settings className="h-3.5 w-3.5" />
+              <Settings className="h-4 w-4" />
             </button>
           </>
         }
       />
+
+      {/* Mobile search bar */}
+      {mobileSearchOpen && (
+        <div className="sm:hidden relative shrink-0" ref={searchRef}>
+          <div className="flex items-center gap-1.5 border border-input rounded-md px-2.5 bg-background">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <input
+              ref={mobileSearchRef}
+              type="text"
+              value={searchQuery}
+              onChange={e => handleSearchChange(e.target.value)}
+              onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
+              placeholder="Search people and stories…"
+              className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            {searchQuery && (
+              <button onClick={() => { setSearchQuery(""); setSearchResults([]); setSearchOpen(false); }} className="text-muted-foreground hover:text-foreground">
+                ×
+              </button>
+            )}
+          </div>
+          {searchOpen && searchResults.length > 0 && (
+            <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-lg border bg-popover shadow-lg overflow-hidden">
+              {searchResults.map(r => (
+                <Link
+                  key={r.id}
+                  to={`${base}/${r.type === "person" ? "people" : "stories"}/${r.id}`}
+                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
+                  onClick={() => { setSearchOpen(false); setSearchQuery(""); setMobileSearchOpen(false); }}
+                >
+                  {r.type === "person"
+                    ? <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    : <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  }
+                  <span className="font-medium truncate">{r.label}</span>
+                  {r.detail && <span className="text-xs text-muted-foreground ml-auto shrink-0">{r.detail}</span>}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => navigate(v === "home" ? base : `${base}/${v}`, { replace: true })} className="flex-1 flex flex-col min-h-0">

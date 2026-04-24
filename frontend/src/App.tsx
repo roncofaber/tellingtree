@@ -16,6 +16,7 @@ import { AdminPage } from "@/pages/AdminPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { InvitePage } from "@/pages/InvitePage";
+import { NotificationsPage } from "@/pages/NotificationsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5 * 60 * 1000, retry: 1 } },
@@ -53,8 +54,9 @@ function App() {
               <Route path="/trees/:treeSlug/people/:personId" element={<PersonDetailPage />} />
               <Route path="/trees/:treeSlug/stories/:storyId"  element={<StoryDetailPage />} />
 
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/admin"    element={<AdminPage />} />
+              <Route path="/settings"       element={<SettingsPage />} />
+              <Route path="/admin"          element={<AdminPage />} />
+              <Route path="/notifications"  element={<NotificationsPage />} />
               <Route path="/invite/:token" element={<InvitePage />} />
             </Route>
 

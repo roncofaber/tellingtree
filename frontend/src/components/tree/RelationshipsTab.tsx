@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+
+const normalize = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -100,6 +102,8 @@ export function RelationshipsTab({ treeId }: Props) {
   });
 
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
 
   const personName = (id: string) => {
     const p = persons?.items.find((p) => p.id === id);
@@ -109,7 +113,8 @@ export function RelationshipsTab({ treeId }: Props) {
   };
 
   const displayedRels = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    setPage(0);
+    const q = normalize(search.trim());
     // Deduplicate: the API auto-creates inverse records (parent↔child, spouse↔spouse).
     // "child" records are always paired with a "parent" record — drop them first so
     // the dedup never has to guess which direction survives. Then collapse symmetric
@@ -126,7 +131,7 @@ export function RelationshipsTab({ treeId }: Props) {
     return deduped
       .filter((r) => PRIMARY_TYPES.has(r.relationship_type))
       .filter((r) => typeFilter === "all" || r.relationship_type === typeFilter)
-      .filter((r) => !q || personName(r.person_a_id).toLowerCase().includes(q) || personName(r.person_b_id).toLowerCase().includes(q))
+      .filter((r) => !q || normalize(personName(r.person_a_id)).includes(q) || normalize(personName(r.person_b_id)).includes(q))
       .sort((a, b) => {
         const cmp = personName(a.person_a_id).localeCompare(personName(b.person_a_id));
         return cmp !== 0 ? cmp : personName(a.person_b_id).localeCompare(personName(b.person_b_id));
@@ -170,6 +175,8 @@ export function RelationshipsTab({ treeId }: Props) {
   if (isLoading) return <LoadingSpinner />;
 
   const isFormValid = personA && personB && personA !== personB && relType.length > 0;
+  const totalPages = Math.ceil(displayedRels.length / PAGE_SIZE);
+  const paginated = displayedRels.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-3">
@@ -309,7 +316,7 @@ export function RelationshipsTab({ treeId }: Props) {
             <col className="w-[10%]" />
           </colgroup>
           <TableBody>
-            {displayedRels.map((rel) => {
+            {paginated.map((rel) => {
               const dateRange = rel.start_date || rel.end_date
                 ? `${rel.start_date?.slice(0, 4) ?? "?"} – ${rel.end_date ? rel.end_date.slice(0, 4) : "present"}`
                 : null;
@@ -350,6 +357,18 @@ export function RelationshipsTab({ treeId }: Props) {
         </Table>
         </div>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between shrink-0 px-1">
+          <span className="text-xs text-muted-foreground">Page {page + 1} of {totalPages}</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(0)}>«</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹ Prev</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next ›</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</Button>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!confirmDeleteId}

@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, Link } from "react-router-dom";
 import { Bell, Check } from "lucide-react";
 import { listNotifications, getUnreadCount, markRead, markAllRead, type Notification } from "@/api/notifications";
+import { listTrees } from "@/api/trees";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function NotificationBell() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const { data: trees } = useQuery({
+    queryKey: queryKeys.trees.all(),
+    queryFn: listTrees,
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -58,15 +68,17 @@ export function NotificationBell() {
   const handleClick = (n: Notification) => {
     if (!n.read_at) markReadMut.mutate(n.id);
     setOpen(false);
-    // Navigate based on entity type — we don't know the tree slug here,
-    // so just close the dropdown. The message gives context.
+    const slug = trees?.find(t => t.id === n.tree_id)?.slug;
+    if (!slug || !n.entity_id) return;
+    if (n.entity_type === "person") navigate(`/trees/${slug}/people/${n.entity_id}`);
+    else if (n.entity_type === "story") navigate(`/trees/${slug}/stories/${n.entity_id}`);
   };
 
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className="relative flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="relative flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
         title="Notifications"
       >
         <Bell className="h-4 w-4" />
@@ -106,6 +118,13 @@ export function NotificationBell() {
               ))
             )}
           </div>
+          <Link
+            to="/notifications"
+            onClick={() => setOpen(false)}
+            className="block text-center text-xs text-primary hover:underline py-2 border-t"
+          >
+            View all notifications
+          </Link>
         </div>
       )}
     </div>

@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+const normalize = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -41,7 +43,21 @@ export function StoriesTab({ treeId }: { treeId: string }) {
   const [search, setSearch] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [sort,   setSort]   = useState<SortKey>("event-desc");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
   const [tagFilter, setTagFilter] = useState<string>("all");
+  const [personFilter, setPersonFilter] = useState<string>("all");
+  const [personSearch, setPersonSearch] = useState("");
+  const [personDropOpen, setPersonDropOpen] = useState(false);
+  const personDropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (personDropRef.current && !personDropRef.current.contains(e.target as Node)) setPersonDropOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title,         setTitle]         = useState("");
   const [editorContent, setEditorContent] = useState<string | null>(null);
@@ -123,12 +139,17 @@ export function StoriesTab({ treeId }: { treeId: string }) {
   });
 
   const filtered = useMemo(() => {
+    setPage(0);
     let items = data?.items ?? [];
-    const q = search.trim().toLowerCase();
-    if (q) items = items.filter(s => s.title.toLowerCase().includes(q) || (s.content ?? "").toLowerCase().includes(q));
+    const q = normalize(search.trim());
+    if (q) items = items.filter(s => normalize(s.title).includes(q) || normalize(s.content ?? "").includes(q));
     if (tagFilter !== "all") items = items.filter(s => s.tag_ids.includes(tagFilter));
+    if (personFilter !== "all") items = items.filter(s => s.person_ids.includes(personFilter));
     return sortStories(items, sort);
-  }, [data, search, sort, tagFilter]);
+  }, [data, search, sort, tagFilter, personFilter]);
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -155,6 +176,60 @@ export function StoriesTab({ treeId }: { treeId: string }) {
               </SelectContent>
             </Select>
           )}
+          {/* Person filter combobox */}
+          <div className="relative" ref={personDropRef}>
+            {personFilter !== "all" ? (
+              <button
+                onClick={() => { setPersonFilter("all"); setPersonSearch(""); }}
+                className="h-8 flex items-center gap-1.5 rounded-md border border-input bg-primary/10 text-primary px-2.5 text-sm hover:bg-primary/20 transition-colors"
+              >
+                {personMap.get(personFilter) ?? "Person"}
+                <span className="text-xs">×</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setPersonDropOpen(o => !o)}
+                className="h-8 flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                All people
+              </button>
+            )}
+            {personDropOpen && personFilter === "all" && (
+              <div className="absolute top-full mt-1 left-0 z-50 w-56 rounded-lg border bg-popover shadow-lg overflow-hidden">
+                <div className="p-1.5 border-b">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={personSearch}
+                    onChange={e => setPersonSearch(e.target.value)}
+                    placeholder="Search person…"
+                    className="w-full h-7 px-2 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  {persons
+                    .filter(p => !personSearch || normalize([p.given_name, p.family_name].filter(Boolean).join(" ")).includes(normalize(personSearch)))
+                    .slice(0, 30)
+                    .map(p => {
+                      const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => { setPersonFilter(p.id); setPersonDropOpen(false); setPersonSearch(""); }}
+                          className="flex w-full items-center px-3 py-1.5 text-sm hover:bg-muted text-left"
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
+                  {persons.filter(p => !personSearch || normalize([p.given_name, p.family_name].filter(Boolean).join(" ")).includes(normalize(personSearch))).length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-3">No people found</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <Select value={sort} onValueChange={v => { if (v !== null) setSort(v as SortKey); }}>
             <SelectTrigger className="h-8 w-40">
               <span className="text-sm">{sort === "event-asc" ? "Oldest event" : sort === "event-desc" ? "Newest event" : sort === "title-asc" ? "Title A→Z" : "Recently added"}</span>
@@ -199,7 +274,7 @@ export function StoriesTab({ treeId }: { treeId: string }) {
         <p className="text-center text-muted-foreground py-8">{search ? "No stories match your search." : "No stories yet."}</p>
       ) : (
         <div className="space-y-2">
-          {filtered.map(s => (
+          {paginated.map(s => (
             <div key={s.id} className="flex items-start gap-3 rounded-lg border px-4 py-3 hover:bg-muted/50 transition-colors">
               <div className="flex-1 min-w-0">
                 <Link to={`/trees/${treeSlug}/stories/${s.id}`} className="font-medium text-sm hover:text-primary hover:underline">{s.title}</Link>
@@ -235,6 +310,19 @@ export function StoriesTab({ treeId }: { treeId: string }) {
           ))}
         </div>
       )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs text-muted-foreground">Page {page + 1} of {totalPages}</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(0)}>«</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹ Prev</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next ›</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</Button>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={!!confirmDeleteId}
         onClose={() => setConfirmDeleteId(null)}

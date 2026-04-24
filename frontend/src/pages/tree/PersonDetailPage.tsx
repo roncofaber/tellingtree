@@ -3,7 +3,8 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { EditIcon, DeleteIcon } from "@/components/common/ActionIcons";
 import { toast } from "sonner";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { Network, Merge, Printer } from "lucide-react";
+import { Network, Merge, Printer, Star, UserPlus } from "lucide-react";
+import { loadGraphSettings, saveGraphSettings } from "@/lib/graphSettings";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPerson, updatePerson, deletePerson, listPersons, mergePersons } from "@/api/persons";
 import { getTree } from "@/api/trees";
@@ -11,6 +12,7 @@ import { getPlace } from "@/api/places";
 import { fetchMediaBlob, uploadMedia, listMedia } from "@/api/media";
 import { AuthImage } from "@/components/common/AuthImage";
 import { listPersonRelationships, updateRelationship, deleteRelationship } from "@/api/relationships";
+import { AddPersonDialog, type AddPersonRelationship, type RelativeKind } from "@/components/common/AddPersonDialog";
 import { listStories } from "@/api/stories";
 import { formatFlexDate } from "@/lib/dates";
 import { queryKeys } from "@/lib/queryKeys";
@@ -20,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
@@ -60,10 +63,15 @@ function Avatar({ initials, imgUrl, size = 64 }: { initials: string; imgUrl?: st
   );
 }
 
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionCard({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <Card>
-      <CardHeader className="pb-2 pt-4 px-5"><CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</CardTitle></CardHeader>
+      <CardHeader className="pb-2 pt-4 px-5">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</CardTitle>
+          {action}
+        </div>
+      </CardHeader>
       <CardContent className="px-5 pb-4">{children}</CardContent>
     </Card>
   );
@@ -140,6 +148,18 @@ export function PersonDetailPage() {
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const [cancelDirtyOpen, setCancelDirtyOpen] = useState(false);
+  const [initialForm, setInitialForm] = useState<FormState>(EMPTY_FORM);
+
+  useEffect(() => {
+    if (!editing) return;
+    function handler(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [editing]);
+
   const { data: tree } = useQuery({
     queryKey: queryKeys.trees.detail(treeSlug!),
     queryFn:  () => getTree(treeSlug!),
@@ -209,6 +229,8 @@ export function PersonDetailPage() {
   const [relType,    setRelType]      = useState("");
   const [relStart,   setRelStart]     = useState("");
   const [relEnd,     setRelEnd]       = useState("");
+
+  const [addRelative, setAddRelative] = useState<AddPersonRelationship | null>(null);
 
   const startRelEdit = (rel: Relationship) => {
     setEditingRel(rel); setRelType(rel.relationship_type);
@@ -312,7 +334,7 @@ export function PersonDetailPage() {
   if (!person) return null;
 
   const startEdit = () => {
-    setForm({
+    const snapshot: FormState = {
       given_name: person.given_name || "", family_name: person.family_name || "",
       maiden_name: person.maiden_name || "", nickname: person.nickname || "",
       birth_date: person.birth_date || "", birth_date_qualifier: person.birth_date_qualifier || "exact", birth_date_2: person.birth_date_2 || "",
@@ -322,12 +344,23 @@ export function PersonDetailPage() {
       gender: person.gender || "", is_living: person.is_living === true ? "true" : person.is_living === false ? "false" : "",
       occupation: person.occupation || "", nationalities: person.nationalities?.join(", ") || "",
       education: person.education || "", bio: person.bio || "",
-    });
+    };
+    setForm(snapshot);
+    setInitialForm(snapshot);
     setEditing(true);
   };
 
   const name     = [person.given_name, person.family_name].filter(Boolean).join(" ") || "Unnamed";
   const initials = ((person.given_name?.[0] ?? "") + (person.family_name?.[0] ?? "")).toUpperCase() || "?";
+
+  const isMe = treeId ? loadGraphSettings(treeId).myPersonId === personId : false;
+  const toggleMe = () => {
+    if (!treeId) return;
+    const s = loadGraphSettings(treeId);
+    const next = isMe ? { ...s, myPersonId: null } : { ...s, myPersonId: personId!, defaultRootPersonId: personId! };
+    saveGraphSettings(treeId, next);
+    toast.success(isMe ? `Removed as "you" in this tree` : `${name} set as you in this tree`);
+  };
 
   const birthFmt = formatFlexDate(person.birth_date, person.birth_date_qualifier, person.birth_date_2, person.birth_date_original);
   const deathFmt = formatFlexDate(person.death_date, person.death_date_qualifier, person.death_date_2, person.death_date_original);
@@ -341,7 +374,10 @@ export function PersonDetailPage() {
         <div className="flex items-center justify-between sticky top-0 bg-background py-2 z-10 border-b">
           <p className="font-semibold">Editing {name}</p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button variant="outline" size="sm" onClick={() => {
+              if (JSON.stringify(form) === JSON.stringify(initialForm)) setEditing(false);
+              else setCancelDirtyOpen(true);
+            }}>Cancel</Button>
             <Button size="sm" disabled={updateMut.isPending} onClick={() => updateMut.mutate()}>{updateMut.isPending ? "Saving…" : "Save"}</Button>
           </div>
         </div>
@@ -416,6 +452,15 @@ export function PersonDetailPage() {
 
         {updateMut.error && <p className="text-sm text-destructive">{updateMut.error instanceof Error ? updateMut.error.message : "Failed to save"}</p>}
       </div>
+      <ConfirmDialog
+        open={cancelDirtyOpen}
+        onClose={() => setCancelDirtyOpen(false)}
+        onConfirm={() => { setCancelDirtyOpen(false); setEditing(false); }}
+        title="Discard changes?"
+        message="Your unsaved changes will be lost."
+        confirmLabel="Discard"
+        destructive
+      />
       </div>
     );
   }
@@ -454,7 +499,17 @@ export function PersonDetailPage() {
             )}
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleMe}
+            title={isMe ? "This is you in this tree — click to unset" : "Set as you in this tree"}
+            className={isMe ? "text-amber-500 border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950" : ""}
+          >
+            <Star className={`h-3.5 w-3.5 mr-1.5 ${isMe ? "fill-amber-500" : ""}`} />
+            {isMe ? "You" : "Set as me"}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => navigate(`${base}/graph?root=${personId}`)}>
             <Network className="h-3.5 w-3.5 mr-1.5" />
             Graph
@@ -479,6 +534,15 @@ export function PersonDetailPage() {
         message="This person will be moved to the trash. You can restore them from the tree settings."
         confirmLabel="Move to trash"
         isPending={deleteMut.isPending}
+      />
+      <ConfirmDialog
+        open={cancelDirtyOpen}
+        onClose={() => setCancelDirtyOpen(false)}
+        onConfirm={() => { setCancelDirtyOpen(false); setEditing(false); }}
+        title="Discard changes?"
+        message="Your unsaved changes will be lost."
+        confirmLabel="Discard"
+        destructive
       />
 
       {/* Merge dialog */}
@@ -645,42 +709,73 @@ export function PersonDetailPage() {
       </SectionCard>
 
       {/* Relationships */}
-      {relationships && relationships.length > 0 && (() => {
-        const groups = groupRelationships(relationships, personId!);
+      {(() => {
+        const groups = relationships ? groupRelationships(relationships, personId!) : { parents: [], spouses: [], partners: [], children: [], other: [] };
         const sections = REL_GROUP_ORDER.filter(({ key }) => groups[key].length > 0);
         return (
-          <SectionCard title="Relationships">
-            <div className="space-y-5">
-              {sections.map(({ key, label }) => (
-                <div key={key}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{label}</p>
-                  <div className="space-y-1.5">
-                    {groups[key].map((rel) => {
-                      const otherId = rel.person_a_id === personId ? rel.person_b_id : rel.person_a_id;
-                      return (
-                        <div key={rel.id} className="flex items-center gap-2">
-                          {key === "other" && (
-                            <Badge variant="secondary" className="text-xs shrink-0">{rel.relationship_type}</Badge>
-                          )}
-                          <Link to={`${base}/people/${otherId}`} className="flex items-center gap-2 group min-w-0 flex-1">
-                            <Avatar initials={resolveInitials(otherId)} size={28} />
-                            <span className="text-sm font-medium group-hover:text-primary group-hover:underline truncate">{resolvePersonName(otherId)}</span>
-                          </Link>
-                          {relDateRange(rel) && <span className="text-xs text-muted-foreground shrink-0">{relDateRange(rel)}</span>}
-                          <div className="flex gap-1 shrink-0 ml-auto">
-                            <EditIcon onClick={() => startRelEdit(rel)} />
-                            <DeleteIcon onClick={() => deleteRelMut.mutate(rel.id)} />
+          <SectionCard
+            title="Relationships"
+            action={
+              <div className="flex gap-1">
+                {(["parent", "child", "sibling", "spouse"] as RelativeKind[]).map(rel => (
+                  <button
+                    key={rel}
+                    onClick={() => setAddRelative({ anchorId: personId!, anchorName: name, relation: rel })}
+                    className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border hover:bg-muted transition-colors text-muted-foreground"
+                    title={`Add ${rel}`}
+                  >
+                    <UserPlus className="h-3 w-3" />
+                    {rel.charAt(0).toUpperCase() + rel.slice(1)}
+                  </button>
+                ))}
+              </div>
+            }
+          >
+            {sections.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No relationships recorded yet.</p>
+            ) : (
+              <div className="space-y-5">
+                {sections.map(({ key, label }) => (
+                  <div key={key}>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{label}</p>
+                    <div className="space-y-1.5">
+                      {groups[key].map((rel) => {
+                        const otherId = rel.person_a_id === personId ? rel.person_b_id : rel.person_a_id;
+                        return (
+                          <div key={rel.id} className="flex items-center gap-2">
+                            {key === "other" && (
+                              <Badge variant="secondary" className="text-xs shrink-0">{rel.relationship_type}</Badge>
+                            )}
+                            <Link to={`${base}/people/${otherId}`} className="flex items-center gap-2 group min-w-0 flex-1">
+                              <Avatar initials={resolveInitials(otherId)} size={28} />
+                              <span className="text-sm font-medium group-hover:text-primary group-hover:underline truncate">{resolvePersonName(otherId)}</span>
+                            </Link>
+                            {relDateRange(rel) && <span className="text-xs text-muted-foreground shrink-0">{relDateRange(rel)}</span>}
+                            <div className="flex gap-1 shrink-0 ml-auto">
+                              <EditIcon onClick={() => startRelEdit(rel)} />
+                              <DeleteIcon onClick={() => deleteRelMut.mutate(rel.id)} />
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </SectionCard>
         );
       })()}
+
+      <AddPersonDialog
+        open={!!addRelative}
+        treeId={treeId!}
+        relationship={addRelative}
+        onClose={() => {
+          setAddRelative(null);
+          queryClient.invalidateQueries({ queryKey: queryKeys.relationships.forPerson(treeId!, personId!) });
+        }}
+      />
 
 
       {/* Photos */}

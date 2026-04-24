@@ -18,6 +18,8 @@ import type { Person } from "@/types/person";
 
 type SortKey = "name-asc" | "name-desc" | "birth-asc" | "birth-desc" | "added-desc";
 
+const normalize = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
 function sortPersons(persons: Person[], sort: SortKey): Person[] {
   return [...persons].sort((a, b) => {
     const nameA = [a.given_name, a.family_name].filter(Boolean).join(" ").toLowerCase();
@@ -45,6 +47,8 @@ export function PersonsTab({ treeId }: { treeId: string }) {
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.persons.full(treeId),
@@ -79,11 +83,11 @@ export function PersonsTab({ treeId }: { treeId: string }) {
 
   // Client-side filter + sort
   const filtered = useMemo(() => {
+    setPage(0);
     let items = data?.items ?? [];
-    const q = search.trim().toLowerCase();
+    const q = normalize(search.trim());
     if (q) items = items.filter((p) => {
-      const name = [p.given_name, p.family_name, p.nickname, p.maiden_name]
-        .filter(Boolean).join(" ").toLowerCase();
+      const name = normalize([p.given_name, p.family_name, p.nickname, p.maiden_name].filter(Boolean).join(" "));
       return name.includes(q);
     });
     if (sexFilter !== "all") items = items.filter((p) => (p.gender ?? "unknown") === sexFilter);
@@ -91,6 +95,9 @@ export function PersonsTab({ treeId }: { treeId: string }) {
     if (livingFilter === "deceased") items = items.filter((p) => p.is_living === false);
     return sortPersons(items, sort);
   }, [data, search, sexFilter, livingFilter, sort]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paginated = filtered.slice(page * pageSize, (page + 1) * pageSize);
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -139,7 +146,7 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             </SelectContent>
           </Select>
           <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {filtered.length} / {data?.total ?? 0}
+            {filtered.length} / {data?.total ?? 0} people
           </span>
         </div>
         <Button className="h-8 shrink-0" onClick={() => setAddDialogOpen(true)}>+ Add Person</Button>
@@ -181,7 +188,7 @@ export function PersonsTab({ treeId }: { treeId: string }) {
             <col className="w-[14%]" />
           </colgroup>
           <TableBody>
-          {filtered.map((p) => {
+          {paginated.map((p) => {
             const name = [p.given_name, p.family_name].filter(Boolean).join(" ") || "Unnamed";
             const born = formatFlexDate(p.birth_date, p.birth_date_qualifier, p.birth_date_2, p.birth_date_original);
             const died = formatFlexDate(p.death_date, p.death_date_qualifier, p.death_date_2, p.death_date_original);
@@ -218,6 +225,31 @@ export function PersonsTab({ treeId }: { treeId: string }) {
         </Table>
         </div>
       </div>
+
+      {(totalPages > 1 || filtered.length > 25) && (
+        <div className="flex items-center justify-between shrink-0 px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Page {page + 1} of {totalPages}</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { if (v !== null) { setPageSize(Number(v)); setPage(0); } }}>
+              <SelectTrigger className="h-7 w-24 text-xs">
+                <span className="text-xs">Show {pageSize}</span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">Show 25</SelectItem>
+                <SelectItem value="50">Show 50</SelectItem>
+                <SelectItem value="100">Show 100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(0)}>«</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹ Prev</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next ›</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</Button>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={!!deleteId}
         onClose={() => setDeleteId(null)}

@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listMembers, addMember, updateMember, removeMember } from "@/api/trees";
 import { createInvite } from "@/api/invites";
+import { lookupUser } from "@/api/users";
+import type { UserLookup } from "@/api/users";
 import { queryKeys } from "@/lib/queryKeys";
 import { ROLE_LABELS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
@@ -35,18 +37,57 @@ export function MembersTab({ treeId }: Props) {
   const [inviteRole, setInviteRole] = useState("viewer");
   const [removeTarget, setRemoveTarget] = useState<{ userId: string; username: string } | null>(null);
 
+  // Debounced username lookup
+  const [lookupResult, setLookupResult] = useState<UserLookup | null>(null);
+  const [lookupError, setLookupError] = useState(false);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = username.trim();
+    if (q.length < 2) {
+      setLookupResult(null);
+      setLookupError(false);
+      setLookupLoading(false);
+      return;
+    }
+    setLookupLoading(true);
+    setLookupResult(null);
+    setLookupError(false);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const result = await lookupUser(q);
+        setLookupResult(result);
+        setLookupError(false);
+      } catch {
+        setLookupResult(null);
+        setLookupError(true);
+      } finally {
+        setLookupLoading(false);
+      }
+    }, 350);
+  }, [username]);
+
   const { data: members, isLoading } = useQuery({
     queryKey: queryKeys.trees.members(treeId),
     queryFn: () => listMembers(treeId),
   });
+
+  function resetDialog() {
+    setUsername("");
+    setRole("viewer");
+    setLookupResult(null);
+    setLookupError(false);
+    setLookupLoading(false);
+  }
 
   const addMut = useMutation({
     mutationFn: () => addMember(treeId, { username, role }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.trees.members(treeId) });
       setDialogOpen(false);
-      setUsername("");
-      setRole("viewer");
+      resetDialog();
       toast.success("Member added");
     },
     onError: (e) => {
@@ -85,7 +126,7 @@ export function MembersTab({ treeId }: Props) {
         <p className="text-sm text-muted-foreground">
           {members?.length ?? 0} member(s)
         </p>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetDialog(); }}>
           <DialogTrigger className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
             Invite Member
           </DialogTrigger>
@@ -106,7 +147,32 @@ export function MembersTab({ treeId }: Props) {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
+                  placeholder="Enter exact username…"
                 />
+                {lookupLoading && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span className="animate-spin inline-block w-3 h-3 border border-current border-t-transparent rounded-full" />
+                    Checking…
+                  </p>
+                )}
+                {lookupResult && !lookupLoading && (
+                  <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                    <UserAvatar
+                      userId={lookupResult.id}
+                      hasAvatar={lookupResult.has_avatar}
+                      initials={userInitials(lookupResult.full_name, lookupResult.username)}
+                      size={24}
+                    />
+                    <span className="font-medium">{lookupResult.username}</span>
+                    {lookupResult.full_name && (
+                      <span className="text-muted-foreground">({lookupResult.full_name})</span>
+                    )}
+                    <span>✓</span>
+                  </div>
+                )}
+                {lookupError && !lookupLoading && username.trim().length >= 2 && (
+                  <p className="text-xs text-destructive">User not found</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Role</Label>

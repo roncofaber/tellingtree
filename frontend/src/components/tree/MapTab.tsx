@@ -169,15 +169,15 @@ export function MapTab({ treeId }: { treeId: string }) {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-1 bg-card rounded-md border px-2">
-                <Search className="h-3 w-3 text-muted-foreground" />
+              <div className="flex items-center gap-1.5 bg-card rounded-md border px-2.5">
+                <Search className="h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   value={personSearch}
                   onChange={e => { setPersonSearch(e.target.value); setSearchOpen(true); }}
                   onFocus={() => personSearch.trim() && setSearchOpen(true)}
                   placeholder="Find person…"
-                  className="h-7 w-32 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                  className="h-9 w-36 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
               {searchOpen && filteredPersons.length > 0 && (

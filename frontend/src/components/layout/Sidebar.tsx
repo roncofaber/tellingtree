@@ -120,6 +120,20 @@ export function Sidebar({ collapsed, onToggle }: Props) {
 
       <Separator className={`my-3 ${c ? "mx-2" : ""}`} />
 
+      {/* Admin link (superadmins only) */}
+      {user?.is_superadmin && (
+        <div className={`mb-1 ${c ? "px-1 flex justify-center" : "px-3"}`}>
+          <NavLink to="/admin" title="Admin" className={({ isActive }) =>
+            `flex items-center ${c ? "justify-center h-8 w-8" : "gap-2.5 px-3 py-2"} rounded-md text-sm transition-colors ${
+              isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            }`
+          }>
+            <Shield className="h-4 w-4 shrink-0" />
+            {!c && <span className="whitespace-nowrap">Admin</span>}
+          </NavLink>
+        </div>
+      )}
+
       {/* Account chip (dropdown) + theme toggle */}
       <div className={`${c ? "px-1 flex flex-col items-center gap-1.5 mb-3" : "px-3 mb-4 flex items-center gap-1.5"}`}>
         <DropdownMenu>
