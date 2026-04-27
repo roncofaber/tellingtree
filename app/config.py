@@ -15,8 +15,9 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
-    max_upload_size_bytes: int = 100 * 1024 * 1024  # 100MB general limit
-    max_gedcom_size_bytes: int = 50 * 1024 * 1024  # 50MB for GEDCOM files
+    max_upload_size_bytes: int = 100 * 1024 * 1024       # 100 MB general limit
+    max_gedcom_size_bytes: int = 50 * 1024 * 1024        # 50 MB for GEDCOM files
+    max_zip_backup_size_bytes: int = 2 * 1024 * 1024 * 1024  # 2 GB for ZIP backups
     storage_path: str = "storage/media"
 
     # Email (Brevo SMTP relay — leave blank to disable email features)

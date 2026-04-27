@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Settings, TreePine, Plus, LogOut, Search, Sun, Moon, PanelLeftClose, PanelLeftOpen, ChevronsUpDown, Shield } from "lucide-react";
+import { LayoutDashboard, Settings, TreePine, Plus, LogOut, Search, Sun, Moon, PanelLeftClose, PanelLeftOpen, ChevronsUpDown, Shield, Bell } from "lucide-react";
+import { resolveTreeIcon } from "@/components/tree/TreeIconPicker";
 import { useAuth } from "@/hooks/useAuth";
 import { listTrees } from "@/api/trees";
+import { getUnreadCount } from "@/api/notifications";
 import { queryKeys } from "@/lib/queryKeys";
+import { NotificationBell } from "@/components/common/NotificationBell";
 import { setTheme } from "@/lib/theme";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -20,18 +23,30 @@ interface Props {
 }
 
 export function Sidebar({ collapsed, onToggle }: Props) {
-  const { user, logout } = useAuth();
+  const { user, logout, updatePreferences } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [treeSearch, setTreeSearch] = useState("");
-  const [themeState, setThemeState] = useState(() =>
-    document.documentElement.classList.contains("dark") ? "dark" as const : "light" as const
+  const [themeState, setThemeState] = useState<"dark" | "light">(() =>
+    document.documentElement.classList.contains("dark") ? "dark" : "light"
   );
+
+  useEffect(() => {
+    const pref = user?.preferences?.theme;
+    if (pref === "dark" || pref === "light") setThemeState(pref);
+  }, [user?.preferences?.theme]);
 
   const { data: trees } = useQuery({
     queryKey: queryKeys.trees.all(),
     queryFn: () => listTrees(0, 100),
   });
+
+  const { data: countData } = useQuery({
+    queryKey: ["notifications", "count"],
+    queryFn: () => getUnreadCount(),
+    refetchInterval: 30000,
+  });
+  const unreadCount = countData?.count ?? 0;
 
   const initials = userInitials(user?.full_name, user?.username);
 
@@ -96,13 +111,14 @@ export function Sidebar({ collapsed, onToggle }: Props) {
             .filter(t => !treeSearch || t.name.toLowerCase().includes(treeSearch.toLowerCase()))
             .map((tree) => {
               const active = location.pathname.startsWith(`/trees/${tree.slug}`);
+              const TreeIcon = resolveTreeIcon(tree.icon);
               return (
                 <Link key={tree.id} to={`/trees/${tree.slug}`} title={c ? tree.name : undefined}
                   className={`flex items-center ${c ? "justify-center h-8 w-8" : "gap-2.5 px-3 py-1.5"} rounded-md text-sm transition-colors ${
                     active ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   }`}
                 >
-                  <TreePine className={`h-3.5 w-3.5 shrink-0 ${c ? "" : "opacity-60"}`} />
+                  <TreeIcon className={`h-3.5 w-3.5 shrink-0 ${c ? "" : "opacity-60"}`} />
                   {!c && <span className="truncate">{tree.name}</span>}
                 </Link>
               );
@@ -125,6 +141,24 @@ export function Sidebar({ collapsed, onToggle }: Props) {
             </div>
             {!c && <span>Admin</span>}
           </NavLink>
+        )}
+        {c ? (
+          <NotificationBell variant="sidebar" />
+        ) : (
+          <button
+            onClick={() => navigate("/notifications")}
+            className="flex items-center gap-2.5 px-2 py-1 rounded-md text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
+          >
+            <div className="w-8 h-8 flex items-center justify-center shrink-0">
+              <Bell className="h-4 w-4" />
+            </div>
+            <span>Notifications</span>
+            {unreadCount > 0 && (
+              <span className="ml-auto text-xs bg-destructive text-white rounded-full px-1.5 py-0.5 font-bold leading-none">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
         )}
         <div className={c ? "flex flex-col items-center gap-1.5" : "flex items-center"}>
         <DropdownMenu>
@@ -175,6 +209,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
               const next = isDark ? "light" : "dark";
               setTheme(next);
               setThemeState(next);
+              updatePreferences({ theme: next }).catch(() => {});
             }}>
               {themeState === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
               {themeState === "dark" ? "Light mode" : "Dark mode"}

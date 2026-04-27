@@ -1,3 +1,11 @@
+export interface UserPreferences {
+  pinned_trees?: string[];
+  tree_order?: string[];
+  theme?: "light" | "dark" | "system";
+  sidebar_collapsed?: boolean;
+  dashboard_view?: "grid" | "list";
+}
+
 export interface User {
   id: string;
   email: string;
@@ -8,6 +16,8 @@ export interface User {
   is_superadmin: boolean;
   created_at: string;
   has_avatar: boolean;
+  preferences: UserPreferences | null;
+  last_active_at: string | null;
 }
 
 export interface Token {

@@ -26,6 +26,14 @@ from app.services.storage import (
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+class PreferencesUpdate(BaseModel):
+    pinned_trees: list[str] | None = None
+    tree_order: list[str] | None = None
+    theme: str | None = None
+    sidebar_collapsed: bool | None = None
+    dashboard_view: str | None = None
+
+
 class UserLookupResponse(BaseModel):
     id: uuid.UUID
     username: str
@@ -55,6 +63,20 @@ def lookup_user(
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.patch("/me/preferences", response_model=UserResponse)
+def update_preferences(
+    data: PreferencesUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    prefs = dict(current_user.preferences or {})
+    prefs.update(data.model_dump(exclude_unset=True))
+    current_user.preferences = prefs
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 

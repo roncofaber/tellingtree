@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
   $getRoot,
@@ -372,7 +373,6 @@ export function ToolbarPlugin({ treeId }: { treeId?: string }) {
                 const media = await uploadMedia(treeId, file);
                 editor.dispatchCommand(INSERT_IMAGE_COMMAND, { mediaId: media.id, treeId, altText: file.name });
               } catch {
-                const { toast } = await import("sonner");
                 toast.error("Failed to upload image");
               }
               e.target.value = "";

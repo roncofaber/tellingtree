@@ -4,15 +4,18 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_admin_user
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_db
 from app.models.password_reset import PasswordResetToken
+from app.models.person import Person
 from app.models.refresh_session import RefreshSession
 from app.models.registration_invite import RegistrationInvite
-from app.models.tree import Tree
+from app.models.story import Story
+from app.models.tree import Tree, TreeMember
 from app.models.user import User
 from app.schemas.registration_invite import (
     PasswordResetUrlResponse,
@@ -20,6 +23,7 @@ from app.schemas.registration_invite import (
     RegistrationInviteResponse,
 )
 from app.schemas.user import UserResponse
+from app.services.notifications import notify_user
 
 
 class AdminStats(BaseModel):
@@ -29,8 +33,34 @@ class AdminStats(BaseModel):
     users_superadmin: int
     trees_total: int
     trees_public: int
+    persons_total: int
+    stories_total: int
     invites_outstanding: int
     invites_used: int
+
+
+class AdminUserResponse(UserResponse):
+    tree_count: int = 0
+
+
+class AdminInviteResponse(RegistrationInviteResponse):
+    used_by_username: str | None = None
+
+
+class AdminTreeResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    is_public: bool
+    owner_id: uuid.UUID
+    owner_username: str | None = None
+    member_count: int = 0
+    person_count: int = 0
+    story_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_admin_user)])
 
@@ -44,6 +74,8 @@ def get_admin_stats(db: Session = Depends(get_db)):
     all_users = db.query(User).all()
     all_trees = db.query(Tree).all()
     all_invites = db.query(RegistrationInvite).all()
+    persons_total = db.query(func.count(Person.id)).filter(Person.deleted_at.is_(None)).scalar() or 0
+    stories_total = db.query(func.count(Story.id)).filter(Story.deleted_at.is_(None)).scalar() or 0
     return AdminStats(
         users_total=len(all_users),
         users_pending=sum(1 for u in all_users if not u.is_approved),
@@ -51,6 +83,8 @@ def get_admin_stats(db: Session = Depends(get_db)):
         users_superadmin=sum(1 for u in all_users if u.is_superadmin),
         trees_total=len(all_trees),
         trees_public=sum(1 for t in all_trees if t.is_public),
+        persons_total=persons_total,
+        stories_total=stories_total,
         invites_outstanding=sum(1 for i in all_invites if not i.used_at and i.expires_at.replace(tzinfo=timezone.utc) > now),
         invites_used=sum(1 for i in all_invites if i.used_at),
     )
@@ -78,13 +112,72 @@ def create_registration_invite(
     return invite
 
 
-@router.get("/registration-invites", response_model=list[RegistrationInviteResponse])
+@router.get("/registration-invites", response_model=list[AdminInviteResponse])
 def list_registration_invites(db: Session = Depends(get_db)):
-    return (
+    invites = (
         db.query(RegistrationInvite)
         .order_by(RegistrationInvite.created_at.desc())
         .all()
     )
+    used_by_ids = [i.used_by for i in invites if i.used_by]
+    usernames = {}
+    if used_by_ids:
+        rows = db.query(User.id, User.username).filter(User.id.in_(used_by_ids)).all()
+        usernames = {r.id: r.username for r in rows}
+    result = []
+    for i in invites:
+        r = AdminInviteResponse.model_validate(i)
+        r.used_by_username = usernames.get(i.used_by) if i.used_by else None
+        result.append(r)
+    return result
+
+
+@router.get("/trees", response_model=list[AdminTreeResponse])
+def list_all_trees(db: Session = Depends(get_db)):
+    trees = db.query(Tree).order_by(Tree.created_at.desc()).all()
+    tree_ids = [t.id for t in trees]
+
+    owner_ids = [t.owner_id for t in trees]
+    owner_map = {}
+    if owner_ids:
+        rows = db.query(User.id, User.username).filter(User.id.in_(owner_ids)).all()
+        owner_map = {r.id: r.username for r in rows}
+
+    member_counts = dict(
+        db.query(TreeMember.tree_id, func.count(TreeMember.id))
+        .filter(TreeMember.tree_id.in_(tree_ids))
+        .group_by(TreeMember.tree_id)
+        .all()
+    )
+    person_counts = dict(
+        db.query(Person.tree_id, func.count(Person.id))
+        .filter(Person.tree_id.in_(tree_ids), Person.deleted_at.is_(None))
+        .group_by(Person.tree_id)
+        .all()
+    )
+    story_counts = dict(
+        db.query(Story.tree_id, func.count(Story.id))
+        .filter(Story.tree_id.in_(tree_ids), Story.deleted_at.is_(None))
+        .group_by(Story.tree_id)
+        .all()
+    )
+
+    result = []
+    for t in trees:
+        result.append(AdminTreeResponse(
+            id=t.id,
+            name=t.name,
+            slug=t.slug,
+            is_public=t.is_public,
+            owner_id=t.owner_id,
+            owner_username=owner_map.get(t.owner_id),
+            member_count=member_counts.get(t.id, 0),
+            person_count=person_counts.get(t.id, 0),
+            story_count=story_counts.get(t.id, 0),
+            created_at=t.created_at,
+            updated_at=t.updated_at,
+        ))
+    return result
 
 
 @router.delete("/registration-invites/{invite_id}", status_code=204)
@@ -101,9 +194,20 @@ def revoke_registration_invite(invite_id: uuid.UUID, db: Session = Depends(get_d
 # ── User approval ───────────────────────────────────────────────────────────────
 
 
-@router.get("/users", response_model=list[UserResponse])
+@router.get("/users", response_model=list[AdminUserResponse])
 def list_users(db: Session = Depends(get_db)):
-    return db.query(User).order_by(User.created_at.desc()).all()
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    tree_counts = dict(
+        db.query(Tree.owner_id, func.count(Tree.id))
+        .group_by(Tree.owner_id)
+        .all()
+    )
+    result = []
+    for u in users:
+        r = AdminUserResponse.model_validate(u)
+        r.tree_count = tree_counts.get(u.id, 0)
+        result.append(r)
+    return result
 
 
 @router.put("/users/{user_id}/approve", response_model=UserResponse)
@@ -112,6 +216,14 @@ def approve_user(user_id: uuid.UUID, db: Session = Depends(get_db)):
     if user is None:
         raise NotFoundError("User not found")
     user.is_approved = True
+    notify_user(
+        db,
+        user_id=user.id,
+        notification_type="account_approved",
+        entity_type="user",
+        entity_id=user.id,
+        message="Your account has been approved. Welcome to TellingTree!",
+    )
     db.commit()
     db.refresh(user)
     return user

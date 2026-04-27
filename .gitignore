@@ -13,7 +13,7 @@ build/
 venv/
 
 storage/media/
-storage/avatars/
+logs/
 
 # Deployment installers
 *.deb

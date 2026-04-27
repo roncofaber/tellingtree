@@ -15,16 +15,31 @@ from app.schemas.common import PaginatedResponse
 from app.schemas.story import StoryCreate, StoryResponse, StoryUpdate
 from app.services.notifications import notify_tree_members
 from app.services.permission import check_tree_access
+from app.services.storage import save_story_content, read_story_content, delete_story_content
 from app.api.v1.deps import pagination_params
 
 router = APIRouter(prefix="/trees/{tree_id}/stories", tags=["stories"])
 
+_UNSET = object()
 
-def _story_to_response(story: Story) -> StoryResponse:
-    resp = StoryResponse.model_validate(story)
-    resp.person_ids = [link.person_id for link in story.person_links]
-    resp.tag_ids = [link.tag_id for link in story.tag_links]
-    return resp
+
+def _story_to_response(story: Story, load_content: bool = True) -> StoryResponse:
+    content = read_story_content(story.content_path) if (load_content and story.content_path) else None
+    return StoryResponse(
+        id=story.id,
+        tree_id=story.tree_id,
+        title=story.title,
+        content=content,
+        event_date=story.event_date,
+        event_end_date=story.event_end_date,
+        event_location=story.event_location,
+        author_id=story.author_id,
+        deleted_at=story.deleted_at,
+        created_at=story.created_at,
+        updated_at=story.updated_at,
+        person_ids=[link.person_id for link in story.person_links],
+        tag_ids=[link.tag_id for link in story.tag_links],
+    )
 
 
 @router.get("", response_model=PaginatedResponse[StoryResponse])
@@ -56,7 +71,7 @@ def list_stories(
         .all()
     )
     return PaginatedResponse(
-        items=[_story_to_response(s) for s in items],
+        items=[_story_to_response(s, load_content=False) for s in items],
         total=total,
         skip=pagination["skip"],
         limit=pagination["limit"],
@@ -76,13 +91,15 @@ def create_story(
         tree_id=tree_id,
         author_id=current_user.id,
         title=data.title,
-        content=data.content,
         event_date=data.event_date,
         event_end_date=data.event_end_date,
         event_location=data.event_location,
     )
     db.add(story)
-    db.flush()
+    db.flush()  # Populate story.id before writing file and linking relations
+
+    if data.content:
+        story.content_path = save_story_content(tree_id, story.id, data.content)
 
     for pid in data.person_ids:
         person = db.query(Person).filter(Person.id == pid, Person.tree_id == tree_id, Person.deleted_at.is_(None)).first()
@@ -112,12 +129,15 @@ def get_story(
     db: Session = Depends(get_db),
 ):
     check_tree_access(db, tree_id, current_user.id, "viewer")
-    story = db.query(Story).filter(
+    story = db.query(Story).options(
+        selectinload(Story.person_links),
+        selectinload(Story.tag_links),
+    ).filter(
         Story.id == story_id, Story.tree_id == tree_id, Story.deleted_at.is_(None)
     ).first()
     if story is None:
         raise NotFoundError("Story not found")
-    return _story_to_response(story)
+    return _story_to_response(story, load_content=True)
 
 
 @router.put("/{story_id}", response_model=StoryResponse)
@@ -129,7 +149,10 @@ def update_story(
     db: Session = Depends(get_db),
 ):
     check_tree_access(db, tree_id, current_user.id, "editor")
-    story = db.query(Story).filter(
+    story = db.query(Story).options(
+        selectinload(Story.person_links),
+        selectinload(Story.tag_links),
+    ).filter(
         Story.id == story_id, Story.tree_id == tree_id, Story.deleted_at.is_(None)
     ).first()
     if story is None:
@@ -137,8 +160,18 @@ def update_story(
 
     update_data = data.model_dump(exclude_unset=True)
     person_ids = update_data.pop("person_ids", None)
+    content = update_data.pop("content", _UNSET)
+
     for key, value in update_data.items():
         setattr(story, key, value)
+
+    if content is not _UNSET:
+        if content:
+            story.content_path = save_story_content(tree_id, story.id, content)
+        else:
+            if story.content_path:
+                delete_story_content(story.content_path)
+            story.content_path = None
 
     if person_ids is not None:
         current_ids = {sp.person_id for sp in story.person_links}

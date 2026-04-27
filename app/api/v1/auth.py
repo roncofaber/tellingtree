@@ -24,6 +24,7 @@ from app.models.user import User
 from app.schemas.registration_invite import RegistrationInvitePublic
 from app.schemas.user import LoginRequest, PasswordChange, RefreshRequest, Token, UserCreate, UserResponse
 from app.services.email import send_password_reset
+from app.services.notifications import notify_superadmins, notify_user
 
 
 def _new_session(db: Session, user: User) -> str:
@@ -120,6 +121,15 @@ def register(request: Request, data: UserCreate, db: Session = Depends(get_db)):
     if invite is not None:
         invite.used_by = user.id
         invite.used_at = datetime.now(timezone.utc)
+
+    if not is_bootstrap:
+        notify_superadmins(
+            db,
+            notification_type="user_pending_approval",
+            entity_type="user",
+            entity_id=user.id,
+            message=f"New registration pending approval: {user.username}",
+        )
 
     db.commit()
     db.refresh(user)

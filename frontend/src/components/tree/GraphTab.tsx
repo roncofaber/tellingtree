@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { useNavigate, useSearchParams, useParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import * as f3 from "family-chart";
 import "family-chart/styles/family-chart.css";
@@ -7,6 +7,7 @@ import { listPersons } from "@/api/persons";
 import { listRelationships } from "@/api/relationships";
 import { listStories } from "@/api/stories";
 import { listTreePlaces } from "@/api/places";
+import { fetchMediaBlob } from "@/api/media";
 import { queryKeys } from "@/lib/queryKeys";
 import type { Person } from "@/types/person";
 import type { Relationship } from "@/types/relationship";
@@ -14,10 +15,10 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { AddPersonDialog, type AddPersonRelationship, type RelativeKind } from "@/components/common/AddPersonDialog";
 import { AuthImage } from "@/components/common/AuthImage";
 import { Button } from "@/components/ui/button";
-import { X, Search, UserPlus, Calendar, MapPin, Briefcase, BookOpen, TreePine } from "lucide-react";
+import { X, Search, UserPlus, Calendar, MapPin, Briefcase, BookOpen, TreePine, Maximize2, Minimize2, LayoutGrid, Circle } from "lucide-react";
 import { getFullName, getInitials, genderColor } from "@/lib/person";
 import { formatFlexDate } from "@/lib/dates";
-import { loadGraphSettings, saveGraphSettings, getResolvedStyle, getResolvedLayout, applyGraphStyle, accentForGender, buildCardHtml } from "@/lib/graphSettings";
+import { loadGraphSettings, saveGraphSettings, getResolvedStyle, getResolvedLayout, applyGraphStyle, accentForGender, buildCardHtml, buildBubbleHtml } from "@/lib/graphSettings";
 
 // ─── Data transformer ────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ function toFamilyChartData(persons: Person[], relationships: Relationship[]) {
         nickname: p.nickname ?? "",
         birthday: yearLabel,
         _gender: p.gender ?? "unknown",
+        _avatarId: p.profile_picture_id ?? "",
       },
       rels: {
         parents:  [...new Set(parentOf.get(p.id) ?? [])].filter(id => personIds.has(id)),
@@ -156,7 +158,7 @@ function findDefaultRoot(persons: Person[], relationships: Relationship[]): stri
 
 function FamilyChartView({
   data, mainId, onSelect, onRecenter, onAddRelative, chartRefOut,
-  initialDepth, treeId, myPersonId, horizontal,
+  initialDepth, treeId, myPersonId, horizontal, cardStyle, onMaxDepth,
 }: {
   data: ReturnType<typeof toFamilyChartData>;
   mainId: string;
@@ -168,17 +170,23 @@ function FamilyChartView({
   treeId: string;
   myPersonId?: string | null;
   horizontal?: boolean;
+  cardStyle?: "card" | "bubble";
+  onMaxDepth?: (max: { ancestry: number; progeny: number }) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const observerRef = useRef<MutationObserver | null>(null);
   const chartRef = useRef<f3.Chart | null>(null);
+  const blobUrlsRef = useRef<Set<string>>(new Set());
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   const cbRef = useRef({ onSelect, onRecenter, onAddRelative });
   cbRef.current = { onSelect, onRecenter, onAddRelative };
 
   useEffect(() => {
     const cont = containerRef.current;
-    if (!cont || !data.length) return;
+    if (!cont || !dataRef.current.length) return;
+
+    const blobUrls = blobUrlsRef.current;
 
     const timer = setTimeout(() => {
       cont.innerHTML = "";
@@ -187,9 +195,20 @@ function FamilyChartView({
         const style = getResolvedStyle(settings);
         const layout = getResolvedLayout(settings);
         applyGraphStyle(cont, style);
-        const chart = f3.createChart(cont, data as f3.Data);
-        chart.setCardYSpacing(layout.cardYSpacing);
-        chart.setCardXSpacing(layout.cardXSpacing);
+
+        // Dim non-highlighted links when path-to-main is active.
+        // CSS :has() is simpler and more performant than a MutationObserver.
+        const styleEl = document.createElement("style");
+        styleEl.textContent = `
+          .link { transition: stroke-opacity 0.25s ease; }
+          svg:has(.f3-path-to-main) .link:not(.f3-path-to-main) { stroke-opacity: 0.12; }
+        `;
+        cont.appendChild(styleEl);
+
+        const chart = f3.createChart(cont, dataRef.current as f3.Data);
+        const isBubble = cardStyle === "bubble";
+        chart.setCardYSpacing(isBubble ? layout.cardYSpacing + 20 : layout.cardYSpacing);
+        chart.setCardXSpacing(isBubble ? 120 : layout.cardXSpacing);
         chart.setTransitionTime(layout.transitionTime);
         chart.setSingleParentEmptyCard(false);
         chart.setShowSiblingsOfMain(layout.showSiblings);
@@ -201,39 +220,77 @@ function FamilyChartView({
         if (horizontal) chart.setOrientationHorizontal();
         if (initialDepth) { chart.setAncestryDepth(initialDepth); chart.setProgenyDepth(initialDepth); }
 
+        const onMaxDepthCb = onMaxDepth;
         chart.setAfterUpdate(() => {
           cont.querySelectorAll<SVGPathElement>(".link").forEach(link => {
             link.style.stroke = style.linkColor;
             link.style.strokeWidth = `${style.linkWidth}px`;
           });
-          if (observerRef.current) observerRef.current.disconnect();
-          const linksView = cont.querySelector(".links_view");
-          if (linksView) {
-            const observer = new MutationObserver(() => {
-              const highlighted = linksView.querySelectorAll<SVGPathElement>(".f3-path-to-main");
-              highlighted.forEach(el => linksView.appendChild(el));
+
+          try {
+            const mid = chart.getMainDatum()?.data?.id;
+            if (mid && onMaxDepthCb) onMaxDepthCb(chart.getMaxDepth(mid));
+          } catch { /* */ }
+
+          // Inject avatars after the full render pass — setOnCardUpdate fires too early
+          // (before setCardInnerHtmlCreator populates the DOM), so we do it here instead.
+          if (isBubble) {
+            cont.querySelectorAll<HTMLElement>(".tt-bubble-circle[data-avatar-id]").forEach(circle => {
+              const avatarId = circle.dataset.avatarId;
+              if (!avatarId || circle.dataset.avatarLoading || circle.dataset.avatarLoaded) return;
+              circle.dataset.avatarLoading = "1";
+              fetchMediaBlob(treeId, avatarId).then(url => {
+                blobUrls.add(url);
+                const img = document.createElement("img");
+                img.style.cssText = "width:100%;height:100%;max-width:none;object-fit:cover;border-radius:50%;display:block;";
+                img.src = url;
+                circle.querySelector(".tt-bubble-initials")?.remove();
+                circle.appendChild(img);
+                circle.dataset.avatarLoaded = "1";
+                delete circle.dataset.avatarLoading;
+              }).catch(() => { delete circle.dataset.avatarLoading; });
             });
-            observer.observe(linksView, { attributes: true, attributeFilter: ["class"], subtree: true });
-            observerRef.current = observer;
+
+            // Restyle mini-tree indicators as small circles instead of rectangles.
+            // Use CSS vars directly — family-chart's card-male/female classes target <rect>, not <circle>.
+            // Override top/z-index: library sets top:-15px z-index:-1 which hides it behind the card.
+            cont.querySelectorAll<HTMLElement>(".mini-tree").forEach(el => {
+              if (el.dataset.restyled) return;
+              el.dataset.restyled = "1";
+              el.style.top = "-5px";
+              el.style.right = "0px";
+              el.style.zIndex = "2";
+              el.innerHTML = `<svg viewBox="0 0 34 14" width="26" height="10" style="overflow:visible;">
+                <line x1="8" y1="7" x2="26" y2="7" stroke="currentColor" stroke-opacity="0.2" stroke-width="1.5"/>
+                <circle cx="8" cy="7" r="5" fill="var(--male-color)"/>
+                <circle cx="26" cy="7" r="5" fill="var(--female-color)"/>
+              </svg>`;
+            });
           }
         });
 
         const card = chart.setCardHtml();
         card.setMiniTree(layout.showMiniTree);
         if (layout.showPathToMain) card.setOnHoverPathToMain();
-        card.setCardDim({ w: 180, h: 90, img_w: 0, img_h: 0, img_x: 0, img_y: 0, text_x: 0, text_y: 0 });
+
+        if (isBubble) {
+          card.setCardDim({ w: 90, h: 110, img_w: 0, img_h: 0, img_x: 0, img_y: 0, text_x: 0, text_y: 0 });
+        } else {
+          card.setCardDim({ w: 180, h: 90, img_w: 0, img_h: 0, img_x: 0, img_y: 0, text_x: 0, text_y: 0 });
+        }
         card.setStyle("rect");
 
         const myId = myPersonId;
         card.setCardInnerHtmlCreator((d: f3.TreeDatum) => {
           const dd = d.data.data as Record<string, string>;
           const isMain = !!(d.data as { main?: boolean }).main;
-          return buildCardHtml(dd, style, { isMain, isMe: d.data.id === myId });
+          return isBubble
+            ? buildBubbleHtml(dd, style, { isMain, isMe: d.data.id === myId })
+            : buildCardHtml(dd, style, { isMain, isMe: d.data.id === myId });
         });
 
         card.setOnCardClick((e: MouseEvent, d: f3.TreeDatum) => {
           if (e.ctrlKey || e.metaKey || e.detail === 2) {
-            card.onCardClickDefault(e, d);
             cbRef.current.onRecenter?.(d.data.id);
             return;
           }
@@ -242,7 +299,6 @@ function FamilyChartView({
 
         card.setOnCardUpdate(function(this: HTMLElement, d: f3.TreeDatum) {
           if (d.data.to_add || d.data.unknown) return;
-          if (this.querySelector(".tt-add-btn")) return;
 
           const dd = d.data.data as Record<string, string>;
           const personName = `${dd["first name"] ?? ""} ${dd["last name"] ?? ""}`.trim() || "Unnamed";
@@ -253,6 +309,9 @@ function FamilyChartView({
           if (!cardEl) return;
           cardEl.style.position = "relative";
           cardEl.style.overflow = "visible";
+
+          // Add/relative + buttons
+          if (this.querySelector(".tt-add-btn")) return;
 
           const buttons = [
             { rel: "parent",  title: "Add parent",  css: "top:-12px;left:50%;transform:translateX(-50%);" },
@@ -295,17 +354,28 @@ function FamilyChartView({
 
     return () => {
       clearTimeout(timer);
-      if (observerRef.current) { observerRef.current.disconnect(); observerRef.current = null; }
       if (cont) cont.innerHTML = "";
       chartRef.current = null;
+      blobUrls.forEach(url => URL.revokeObjectURL(url));
+      blobUrls.clear();
     };
-  }, [data, horizontal]); // eslint-disable-line
+  }, [horizontal, cardStyle]); // eslint-disable-line
+
+  // Smooth data update — fires when pedigree filters or persons change,
+  // avoids a full chart reinit by calling updateData() in place.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !data.length) return;
+    chart.updateData(data as f3.Data);
+    chart.updateMainId(mainId);
+    chart.updateTree({});
+  }, [data]); // eslint-disable-line
 
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart || !mainId) return;
     chart.updateMainId(mainId);
-    chart.updateTree({ tree_position: "main_to_middle" });
+    chart.updateTree({});
   }, [mainId]);
 
   return <div ref={containerRef} className="f3" style={{ width: "100%", height: "100%" }} />;
@@ -382,7 +452,7 @@ function SidePanel({
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-bold leading-tight truncate">{name}</h2>
+            <Link to={`/trees/${treeSlug}/people/${p.id}`} className="text-lg font-bold leading-tight truncate block hover:text-primary hover:underline">{name}</Link>
             {p.maiden_name && <p className="text-sm text-muted-foreground">(née {p.maiden_name})</p>}
             {p.nickname && <p className="text-sm text-muted-foreground italic">"{p.nickname}"</p>}
           </div>
@@ -601,6 +671,7 @@ export function GraphTab({ treeId }: { treeId: string }) {
   const [rootPersonId,     setRootPersonId]     = useState<string | null>(urlRoot ?? settings.defaultRootPersonId);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [depth, setDepth] = useState(settings.maxDepth || 3);
+  const [maxDepthAvail, setMaxDepthAvail] = useState<{ ancestry: number; progeny: number } | null>(null);
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
@@ -610,6 +681,7 @@ export function GraphTab({ treeId }: { treeId: string }) {
     return () => document.removeEventListener("keydown", onKeydown);
   }, []);
   const [viewMode, setViewMode] = useState<"tree" | "pedigree">("tree");
+  const [cardStyle, setCardStyle] = useState<"card" | "bubble">(settings.cardStyle ?? "card");
   const chartRef = useRef<f3.Chart | null>(null);
 
   useEffect(() => {
@@ -643,14 +715,20 @@ export function GraphTab({ treeId }: { treeId: string }) {
     return persons.some((p) => p.id === wanted) ? wanted : persons[0].id;
   }, [persons, relationships, rootPersonId]);
 
-  const chartData = useMemo(() => {
-    if (!persons.length) return [];
-    if (viewMode === "pedigree" && rootId) {
-      const ped = buildPedigreeData(persons, relationships, rootId, depth > 0 ? depth : undefined);
-      return toFamilyChartData(ped.persons, ped.relationships);
-    }
-    return toFamilyChartData(persons, relationships);
-  }, [persons, relationships, viewMode, rootId, depth]);
+  // Full tree data never depends on rootId — changing root only updates the chart's
+  // internal main pointer via updateMainId, without triggering a full reinit.
+  const fullTreeData = useMemo(
+    () => persons.length ? toFamilyChartData(persons, relationships) : [],
+    [persons, relationships],
+  );
+
+  const pedigreeData = useMemo(() => {
+    if (!persons.length || !rootId) return [];
+    const ped = buildPedigreeData(persons, relationships, rootId, depth > 0 ? depth : undefined);
+    return toFamilyChartData(ped.persons, ped.relationships);
+  }, [persons, relationships, rootId, depth]);
+
+  const chartData = viewMode === "pedigree" ? pedigreeData : fullTreeData;
 
   const handleSelect = useCallback((personId: string) => {
     setSelectedPersonId(personId);
@@ -665,12 +743,26 @@ export function GraphTab({ treeId }: { treeId: string }) {
     setDepth(d);
     const chart = chartRef.current;
     if (chart) {
-      chart.setAncestryDepth(d || 999);
-      chart.setProgenyDepth(d || 999);
+      chart.setAncestryDepth((d > 0 ? d : undefined) as unknown as number);
+      chart.setProgenyDepth((d > 0 ? d : undefined) as unknown as number);
       try { chart.updateTree({ tree_position: "fit" }); } catch { /* */ }
     }
     saveGraphSettings(treeId, { ...loadGraphSettings(treeId), maxDepth: d });
   }, [treeId]);
+
+  const graphWrapRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    function onChange() { setIsFullscreen(!!document.fullscreenElement); }
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (!isFullscreen) graphWrapRef.current?.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }
 
   if (pLoad || rLoad) return <LoadingSpinner />;
   if (pErr  || rErr)  return (
@@ -700,8 +792,11 @@ export function GraphTab({ treeId }: { treeId: string }) {
 
   return (
     <>
-      <div style={{ height: "calc(100vh - 220px)", minHeight: 400 }}
-        className="relative border rounded-xl overflow-hidden family-chart-light">
+      <div
+        ref={graphWrapRef}
+        style={{ height: isFullscreen ? "100dvh" : "calc(100vh - 220px)", minHeight: 400 }}
+        className="relative border rounded-xl overflow-hidden family-chart-light"
+      >
         <FamilyChartView
           data={chartData}
           mainId={rootId}
@@ -713,20 +808,29 @@ export function GraphTab({ treeId }: { treeId: string }) {
           chartRefOut={chartRef}
           initialDepth={viewMode === "pedigree" ? undefined : (depth || undefined)}
           horizontal={viewMode === "pedigree"}
+          cardStyle={cardStyle}
+          onMaxDepth={setMaxDepthAvail}
         />
 
         {/* Controls */}
         <div className="absolute top-2 right-2 z-10 bg-background/90 backdrop-blur-sm border border-border rounded-lg px-2.5 py-1.5 shadow-sm flex items-center gap-2">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-muted-foreground font-medium">Depth</span>
-            {[1, 2, 3, 4, 5, 0].map(d => (
-              <button key={d} onClick={() => handleDepthChange(d)}
-                className={`w-5 h-5 rounded text-[10px] font-semibold transition-colors ${
-                  depth === d ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}>
-                {d === 0 ? "∞" : d}
-              </button>
-            ))}
+            {[1, 2, 3, 4, 5, 0].map(d => {
+              const maxAvail = maxDepthAvail ? Math.max(maxDepthAvail.ancestry, maxDepthAvail.progeny) : Infinity;
+              const beyond = d > 0 && d > maxAvail;
+              return (
+                <button key={d} onClick={() => handleDepthChange(d)}
+                  title={beyond ? `Max available: ${maxAvail}` : undefined}
+                  className={`w-5 h-5 rounded text-[10px] font-semibold transition-colors ${
+                    depth === d ? "bg-primary text-primary-foreground" :
+                    beyond ? "bg-muted text-muted-foreground/30 cursor-default" :
+                    "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}>
+                  {d === 0 ? "∞" : d}
+                </button>
+              );
+            })}
           </div>
           <div className="w-px h-4 bg-border" />
           <button
@@ -748,7 +852,46 @@ export function GraphTab({ treeId }: { treeId: string }) {
             ))}
           </div>
           <div className="w-px h-4 bg-border" />
+          <div className="flex items-center gap-1">
+            <button
+              title="Card view"
+              onClick={() => {
+                setCardStyle("card");
+                saveGraphSettings(treeId, { ...loadGraphSettings(treeId), cardStyle: "card" });
+              }}
+              className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                cardStyle === "card" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              <LayoutGrid className="h-3 w-3" />
+            </button>
+            <button
+              title="Bubble view"
+              onClick={() => {
+                setCardStyle("bubble");
+                saveGraphSettings(treeId, { ...loadGraphSettings(treeId), cardStyle: "bubble" });
+              }}
+              className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                cardStyle === "bubble" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              <Circle className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="w-px h-4 bg-border" />
           <PersonSearch persons={persons} onSelect={handleRecenter} />
+          {document.fullscreenEnabled && (
+            <>
+              <div className="w-px h-4 bg-border" />
+              <button
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                className="w-5 h-5 rounded text-[10px] font-semibold bg-muted text-muted-foreground hover:bg-muted/80 transition-colors flex items-center justify-center"
+              >
+                {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+              </button>
+            </>
+          )}
         </div>
 
         <p className="absolute bottom-2 right-2 text-xs text-muted-foreground/50 pointer-events-none select-none z-10">

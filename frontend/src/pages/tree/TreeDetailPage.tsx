@@ -106,17 +106,18 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
 
   const upcomingBirthdays = useMemo(() => {
     const today = new Date();
-    const todayMD = today.getMonth() * 100 + today.getDate();
+    today.setHours(0, 0, 0, 0);
     const thisYear = today.getFullYear();
 
     return persons
       .filter(p => p.birth_date)
       .map(p => {
         const [y, m, d] = p.birth_date!.split("-").map(Number);
-        const md = (m - 1) * 100 + d;
-        let daysAway = md - todayMD;
-        if (daysAway < 0) daysAway += 365;
-        const turnsAge = thisYear - y + (md >= todayMD ? 0 : 1);
+        // Next occurrence of this birthday — this year or next if already passed
+        let bday = new Date(thisYear, m - 1, d);
+        if (bday < today) bday = new Date(thisYear + 1, m - 1, d);
+        const daysAway = Math.round((bday.getTime() - today.getTime()) / 86400000);
+        const turnsAge = bday.getFullYear() - y;
         const deceased = p.is_living === false;
         return { person: p, month: m, day: d, birthYear: y, daysAway, turnsAge, deceased };
       })
@@ -193,20 +194,30 @@ function DashboardTab({ treeId, treeSlug }: { treeId: string; treeSlug: string }
       </div>
 
       {/* Quick actions */}
-      <div className="flex gap-2">
+      <div className="flex gap-3 justify-center">
         <button
           onClick={() => setAddPersonOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
+          className="group text-left rounded-xl border bg-card px-4 py-3 flex items-center gap-3 hover:border-blue-500/40 hover:shadow-sm transition-all"
         >
-          <UserPlus className="h-3.5 w-3.5" />
-          Add person
+          <div className="h-9 w-9 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 group-hover:bg-blue-500/15 transition-colors">
+            <UserPlus className="h-4 w-4 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Add person</p>
+            <p className="text-xs text-muted-foreground">Add a family member to your tree</p>
+          </div>
         </button>
         <button
           onClick={() => navigate(`${base}/stories`, { replace: true })}
-          className="flex items-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
+          className="group text-left rounded-xl border bg-card px-4 py-3 flex items-center gap-3 hover:border-amber-500/40 hover:shadow-sm transition-all"
         >
-          <PenLine className="h-3.5 w-3.5" />
-          Write story
+          <div className="h-9 w-9 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0 group-hover:bg-amber-500/15 transition-colors">
+            <PenLine className="h-4 w-4 text-amber-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Write a story</p>
+            <p className="text-xs text-muted-foreground">Preserve a memory or piece of history</p>
+          </div>
         </button>
       </div>
       <AddPersonDialog open={addPersonOpen} treeId={treeId} onClose={() => setAddPersonOpen(false)} />
@@ -644,17 +655,17 @@ export function TreeDetailPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => navigate(v === "home" ? base : `${base}/${v}`, { replace: true })} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start shrink-0">
-          <TabsTrigger value="home"    className="shrink-0">Home</TabsTrigger>
-          <TabsTrigger value="graph"   className="shrink-0">Graph</TabsTrigger>
-          <TabsTrigger value="map"     className="shrink-0">Map</TabsTrigger>
-          <TabsTrigger value="people"  className="shrink-0">People{badge(pCount?.total)}</TabsTrigger>
-          <TabsTrigger value="stories" className="shrink-0">Stories{badge(sCount?.total)}</TabsTrigger>
-          <TabsTrigger value="media"   className="shrink-0">Media</TabsTrigger>
+        <TabsList className="flex-nowrap w-full justify-start shrink-0 max-w-6xl mx-auto overflow-hidden">
+          <TabsTrigger value="home"    className="shrink-0 sm:flex-1">Home</TabsTrigger>
+          <TabsTrigger value="graph"   className="shrink-0 sm:flex-1">Graph</TabsTrigger>
+          <TabsTrigger value="map"     className="shrink-0 sm:flex-1">Map</TabsTrigger>
+          <TabsTrigger value="people"  className="shrink-0 sm:flex-1">People{badge(pCount?.total)}</TabsTrigger>
+          <TabsTrigger value="stories" className="shrink-0 sm:flex-1">Stories{badge(sCount?.total)}</TabsTrigger>
+          <TabsTrigger value="media"   className="shrink-0 sm:flex-1">Media</TabsTrigger>
         </TabsList>
 
         <TabsContent value="home" className="overflow-auto min-h-0">
-          <div className="max-w-7xl mx-auto w-full">
+          <div className="max-w-6xl mx-auto w-full">
             <DashboardTab treeId={treeId} treeSlug={treeSlug!} />
           </div>
         </TabsContent>

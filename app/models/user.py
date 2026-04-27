@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Boolean, DateTime, Integer
+from sqlalchemy import JSON, String, Boolean, DateTime, Integer
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -18,6 +19,8 @@ class User(Base):
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
     is_superadmin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
     token_version: Mapped[int] = mapped_column(Integer, default=0)
+    preferences: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), default=None)
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

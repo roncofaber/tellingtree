@@ -27,7 +27,7 @@ class StoryResponse(BaseModel):
     id: uuid.UUID
     tree_id: uuid.UUID
     title: str
-    content: str | None
+    content: str | None = None
     event_date: date | None
     event_end_date: date | None
     event_location: str | None

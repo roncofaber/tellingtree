@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import { Link } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet.heat";
@@ -32,6 +33,8 @@ interface Props {
   showMigration?: boolean;
   storyMarkers?: StoryMarker[];
   filters?: MapFilters;
+  fitSignal?: number;
+  treeSlug?: string;
 }
 
 function makeDotIcon(color: string, size = 12, highlight = false): L.DivIcon {
@@ -107,6 +110,22 @@ function FitBounds({ places, storyMarkers = [] }: { places: PlaceWithPersons[]; 
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
   }, [places, storyMarkers, map]);
 
+  return null;
+}
+
+function FitOnSignal({ places, storyMarkers, signal }: { places: PlaceWithPersons[]; storyMarkers: StoryMarker[]; signal?: number }) {
+  const map = useMap();
+  const prev = useRef<number | undefined>(signal);
+  useEffect(() => {
+    if (signal === undefined || signal === prev.current) return;
+    prev.current = signal;
+    const pts: [number, number][] = [
+      ...places.filter(p => p.lat != null && p.lon != null).map(p => [p.lat!, p.lon!] as [number, number]),
+      ...storyMarkers.map(s => [s.lat, s.lon] as [number, number]),
+    ];
+    if (pts.length === 0) return;
+    map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 10 });
+  }, [signal, map, places, storyMarkers]);
   return null;
 }
 
@@ -218,7 +237,7 @@ export function PickerMap({ lat, lon, onPick }: { lat: number | null; lon: numbe
 
 // ─── Main map ─────────────────────────────────────────────────────────────────
 
-export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = false, showMigration = false, storyMarkers = [], filters }: Props) {
+export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = false, showMigration = false, storyMarkers = [], filters, fitSignal, treeSlug }: Props) {
   const geocoded = places.filter((p) => p.lat !== null && p.lon !== null);
   if (geocoded.length === 0 && storyMarkers.length === 0) {
     return (
@@ -249,6 +268,7 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FitBounds places={geocoded} storyMarkers={showStoriesF ? storyMarkers : []} />
+      <FitOnSignal places={geocoded} storyMarkers={showStoriesF ? storyMarkers : []} signal={fitSignal} />
       {heatmap ? (
         <HeatmapLayer places={geocoded} />
       ) : (
@@ -280,15 +300,25 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
               icon={icon}
               eventHandlers={{ click: () => onMarkerClick?.(p.id) }}
             >
-              <Popup maxHeight={200}>
-                <div className="text-sm space-y-1 min-w-[160px]">
+              <Popup>
+                <div className="text-sm min-w-[160px]">
                   <p className="font-semibold">{p.display_name}</p>
                   {p.persons && p.persons.length > 0 && (
-                    <div className="text-xs border-t pt-1 mt-1 space-y-0.5">
+                    <div className="text-xs border-t pt-1 mt-1 overflow-y-auto max-h-[120px] space-y-0.5">
                       {[...p.persons].sort((a, b) => a.name.localeCompare(b.name)).map((pr) => (
-                        <p key={`${pr.id}-${pr.field}`} className="text-muted-foreground">
-                          {pr.name} <span className="opacity-60">({pr.field})</span>
-                        </p>
+                        <div key={`${pr.id}-${pr.field}`} className="flex items-center gap-1">
+                          {treeSlug ? (
+                            <Link
+                              to={`/trees/${treeSlug}/people/${pr.id}`}
+                              className="text-primary hover:underline font-medium"
+                            >
+                              {pr.name}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">{pr.name}</span>
+                          )}
+                          <span className="opacity-50">· {pr.field}</span>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -302,9 +332,20 @@ export function PlacesMap({ places, selectedPlaceId, onMarkerClick, heatmap = fa
       {showStoriesF && storyMarkers.map(s => (
         <Marker key={`story-${s.id}`} position={[s.lat, s.lon]} icon={storyDotIcon}>
           <Popup>
-            <div className="text-sm min-w-[120px]">
-              <p className="font-semibold">{s.title}</p>
-              <p className="text-xs text-muted-foreground">{[s.year, s.location].filter(Boolean).join(" · ")}</p>
+            <div className="text-sm min-w-[120px] space-y-0.5">
+              {treeSlug ? (
+                <Link
+                  to={`/trees/${treeSlug}/stories/${s.id}`}
+                  className="font-semibold text-primary hover:underline block"
+                >
+                  {s.title}
+                </Link>
+              ) : (
+                <p className="font-semibold">{s.title}</p>
+              )}
+              {(s.year || s.location) && (
+                <p className="text-xs text-muted-foreground">{[s.year, s.location].filter(Boolean).join(" · ")}</p>
+              )}
             </div>
           </Popup>
         </Marker>

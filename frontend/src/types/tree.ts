@@ -4,6 +4,7 @@ export interface Tree {
   name: string;
   slug: string;
   description: string | null;
+  icon: string | null;
   is_public: boolean;
   created_at: string;
   updated_at: string;

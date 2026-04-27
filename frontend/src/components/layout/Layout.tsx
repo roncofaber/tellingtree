@@ -1,26 +1,36 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { Sidebar } from "./Sidebar";
 import { NotificationBell } from "@/components/common/NotificationBell";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useAuth } from "@/hooks/useAuth";
 import { Menu } from "lucide-react";
 
 export function Layout() {
+  const { user, updatePreferences } = useAuth();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() =>
     localStorage.getItem("sidebar-collapsed") === "true"
   );
   useKeyboardShortcuts();
 
+  // Sync collapsed state from server preferences when user loads
+  useEffect(() => {
+    if (user?.preferences?.sidebar_collapsed !== undefined) {
+      setCollapsed(user.preferences.sidebar_collapsed);
+    }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleToggle = useCallback(() => {
     setCollapsed(prev => {
       const next = !prev;
       localStorage.setItem("sidebar-collapsed", String(next));
+      updatePreferences({ sidebar_collapsed: next }).catch(() => {});
       return next;
     });
-  }, []);
+  }, [updatePreferences]);
 
   return (
     <div className="flex h-screen">

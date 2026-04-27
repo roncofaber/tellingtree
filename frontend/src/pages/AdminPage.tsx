@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import {
   listRegistrationInvites, createRegistrationInvite, revokeRegistrationInvite,
-  listAllUsers, approveUser, rejectUser, generateResetToken, deleteUser,
+  listAllUsers, listAllTrees, approveUser, rejectUser, generateResetToken, deleteUser,
   promoteUser, demoteUser, getAdminStats,
 } from "@/api/admin";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -16,17 +16,42 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { TableRowsSkeleton } from "@/components/common/Skeleton";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { Users, Trees, Mail, ShieldCheck, Clock } from "lucide-react";
+import { UserAvatar, userInitials } from "@/components/common/UserAvatar";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Users, Trees, Mail, ShieldCheck, Clock, MoreHorizontal,
+  Globe, Lock, User as UserIcon, ScrollText,
+} from "lucide-react";
 import type { AdminStats } from "@/api/admin";
 
 const adminKeys = {
   invites: ["admin", "invites"] as const,
   users:   ["admin", "users"]   as const,
+  trees:   ["admin", "trees"]   as const,
   stats:   ["admin", "stats"]   as const,
 };
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function relativeTime(iso: string | null): string {
+  if (!iso) return "Never";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 2)  return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
 
@@ -39,15 +64,17 @@ function OverviewTab() {
   if (isLoading) return <LoadingSpinner />;
 
   const cards = [
-    { label: "Total users",    value: stats?.users_total,      icon: Users,      sub: `${stats?.users_pending ?? 0} pending` },
-    { label: "Active users",   value: stats?.users_active,     icon: ShieldCheck, sub: `${stats?.users_superadmin ?? 0} superadmin` },
-    { label: "Trees",          value: stats?.trees_total,      icon: Trees,      sub: `${stats?.trees_public ?? 0} public` },
-    { label: "Invites used",   value: stats?.invites_used,     icon: Mail,       sub: `${stats?.invites_outstanding ?? 0} outstanding` },
+    { label: "Total users",   value: stats?.users_total,    icon: Users,      sub: `${stats?.users_pending ?? 0} pending · ${stats?.users_superadmin ?? 0} admin` },
+    { label: "Active users",  value: stats?.users_active,   icon: UserIcon,   sub: `${stats?.users_superadmin ?? 0} superadmin` },
+    { label: "Trees",         value: stats?.trees_total,    icon: Trees,      sub: `${stats?.trees_public ?? 0} public` },
+    { label: "People",        value: stats?.persons_total,  icon: Users,      sub: "across all trees" },
+    { label: "Stories",       value: stats?.stories_total,  icon: ScrollText, sub: "across all trees" },
+    { label: "Invites used",  value: stats?.invites_used,   icon: Mail,       sub: `${stats?.invites_outstanding ?? 0} outstanding` },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {cards.map(({ label, value, icon: Icon, sub }) => (
           <Card key={label}>
             <CardContent className="p-4 flex flex-col gap-1">
@@ -85,36 +112,33 @@ function UsersTab() {
   const queryClient = useQueryClient();
   const { user: me } = useAuth();
 
-  const { data: users, isLoading } = useQuery({
-    queryKey: adminKeys.users,
-    queryFn:  listAllUsers,
-  });
+  const { data: users, isLoading } = useQuery({ queryKey: adminKeys.users, queryFn: listAllUsers });
 
-  const [search,         setSearch]         = useState("");
-  const [statusFilter,   setStatusFilter]   = useState<"all" | "pending" | "active" | "superadmin">("all");
-  const [page,           setPage]           = useState(0);
+  const [search,        setSearch]        = useState("");
+  const [statusFilter,  setStatusFilter]  = useState<"all" | "pending" | "active" | "superadmin">("all");
+  const [page,          setPage]          = useState(0);
   const PAGE_SIZE = 25;
-  const [rejectTarget,   setRejectTarget]   = useState<{ id: string; username: string } | null>(null);
-  const [deleteTarget,   setDeleteTarget]   = useState<{ id: string; username: string } | null>(null);
-  const [promoteTarget,  setPromoteTarget]  = useState<{ id: string; username: string } | null>(null);
-  const [demoteTarget,   setDemoteTarget]   = useState<{ id: string; username: string } | null>(null);
-  const [resetUrl,       setResetUrl]       = useState<string | null>(null);
+  const [rejectTarget,  setRejectTarget]  = useState<{ id: string; username: string } | null>(null);
+  const [deleteTarget,  setDeleteTarget]  = useState<{ id: string; username: string } | null>(null);
+  const [promoteTarget, setPromoteTarget] = useState<{ id: string; username: string } | null>(null);
+  const [demoteTarget,  setDemoteTarget]  = useState<{ id: string; username: string } | null>(null);
+  const [resetUrl,      setResetUrl]      = useState<string | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: adminKeys.users });
     queryClient.invalidateQueries({ queryKey: adminKeys.stats });
   };
 
-  const approveMut = useMutation({ mutationFn: approveUser,  onSuccess: () => { invalidate(); toast.success("User approved");   }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed") });
-  const rejectMut  = useMutation({ mutationFn: rejectUser,   onSuccess: () => { invalidate(); toast.success("User suspended");  }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed") });
-  const deleteMut  = useMutation({ mutationFn: deleteUser,   onSuccess: () => { invalidate(); toast.success("User deleted");    }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed") });
-  const promoteMut = useMutation({ mutationFn: promoteUser,  onSuccess: () => { invalidate(); toast.success("User promoted to superadmin"); }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed") });
-  const demoteMut  = useMutation({ mutationFn: demoteUser,   onSuccess: () => { invalidate(); toast.success("Superadmin removed");          }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed") });
-  const resetMut   = useMutation({ mutationFn: generateResetToken, onSuccess: (data) => setResetUrl(data.url), onError: (e) => toast.error(e instanceof Error ? e.message : "Failed") });
+  const approveMut = useMutation({ mutationFn: approveUser,  onSuccess: () => { invalidate(); toast.success("User approved");   }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to approve user") });
+  const rejectMut  = useMutation({ mutationFn: rejectUser,   onSuccess: () => { invalidate(); toast.success("User suspended");  }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to suspend user") });
+  const deleteMut  = useMutation({ mutationFn: deleteUser,   onSuccess: () => { invalidate(); toast.success("User deleted");    }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to delete user") });
+  const promoteMut = useMutation({ mutationFn: promoteUser,  onSuccess: () => { invalidate(); toast.success("Promoted to superadmin"); }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to promote user") });
+  const demoteMut  = useMutation({ mutationFn: demoteUser,   onSuccess: () => { invalidate(); toast.success("Superadmin removed");     }, onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to demote user") });
+  const resetMut   = useMutation({ mutationFn: generateResetToken, onSuccess: (data) => setResetUrl(data.url), onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to generate reset link") });
 
   const filtered = (users ?? []).filter(u => {
     const q = search.trim().toLowerCase();
-    if (q && !u.username.toLowerCase().includes(q) && !(u.email ?? "").toLowerCase().includes(q)) return false;
+    if (q && !u.username.toLowerCase().includes(q) && !(u.email ?? "").toLowerCase().includes(q) && !(u.full_name ?? "").toLowerCase().includes(q)) return false;
     if (statusFilter === "pending")    return !u.is_approved;
     if (statusFilter === "active")     return u.is_approved && !u.is_superadmin;
     if (statusFilter === "superadmin") return u.is_superadmin;
@@ -130,113 +154,122 @@ function UsersTab() {
   return (
     <div className="flex flex-col h-full min-h-0 gap-3">
       {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 items-center justify-between shrink-0">
-        <div className="flex flex-wrap gap-2 items-center flex-1 min-w-0">
-          <Input
-            placeholder="Search by username or email…"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(0); }}
-            className="h-8 w-full sm:w-56"
-          />
-          <div className="flex gap-1">
-            {(["all", "pending", "active", "superadmin"] as const).map(f => (
-              <button key={f} onClick={() => { setStatusFilter(f); setPage(0); }}
-                className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${statusFilter === f ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted"}`}>
-                {f === "all" ? `All (${users?.length ?? 0})` : f === "pending" ? `Pending${pendingCount > 0 ? ` (${pendingCount})` : ""}` : f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
-          </div>
+      <div className="flex flex-wrap gap-2 items-center shrink-0">
+        <Input
+          placeholder="Search by name, username or email…"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(0); }}
+          className="h-8 w-full sm:w-64"
+        />
+        <div className="flex gap-1 flex-wrap">
+          {(["all", "pending", "active", "superadmin"] as const).map(f => (
+            <button key={f} onClick={() => { setStatusFilter(f); setPage(0); }}
+              className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${statusFilter === f ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted"}`}>
+              {f === "all"     ? `All (${users?.length ?? 0})`
+               : f === "pending"  ? `Pending${pendingCount > 0 ? ` (${pendingCount})` : ""}`
+               : f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Table */}
-      <div className="border rounded-lg flex flex-col min-h-0 flex-1">
-        <Table className="table-fixed">
-          <colgroup>
-            <col className="w-[22%]" />
-            <col className="hidden sm:table-column w-[28%]" />
-            <col className="w-[14%]" />
-            <col className="hidden sm:table-column w-[12%]" />
-            <col className="w-[24%]" />
-          </colgroup>
-          <TableHeader className="bg-muted/50">
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead className="hidden sm:table-cell">Email</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden sm:table-cell">Joined</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-        </Table>
+      <div className="border rounded-lg overflow-hidden flex flex-col min-h-0 flex-1">
         <div className="overflow-auto flex-1 min-h-0">
-          <Table className="table-fixed">
-            <colgroup>
-              <col className="w-[22%]" />
-              <col className="hidden sm:table-column w-[28%]" />
-              <col className="w-[14%]" />
-              <col className="hidden sm:table-column w-[12%]" />
-              <col className="w-[24%]" />
-            </colgroup>
+          <Table>
+            <TableHeader className="bg-muted/50 sticky top-0 z-10">
+              <TableRow>
+                <TableHead className="w-[260px]">User</TableHead>
+                <TableHead className="hidden md:table-cell">Email</TableHead>
+                <TableHead className="w-[90px]">Status</TableHead>
+                <TableHead className="hidden sm:table-cell w-[60px]">Trees</TableHead>
+                <TableHead className="hidden lg:table-cell w-[110px]">Last active</TableHead>
+                <TableHead className="hidden md:table-cell w-[100px]">Joined</TableHead>
+                <TableHead className="w-[130px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
-              {paginated.map(u => (
-                <TableRow key={u.id}>
-                  <TableCell className="font-medium">
-                    {u.username}
-                    {u.id === me?.id && <span className="ml-1.5 text-xs text-muted-foreground">(you)</span>}
-                    {u.full_name && <span className="block text-xs text-muted-foreground">{u.full_name}</span>}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">{u.email}</TableCell>
-                  <TableCell>
-                    {u.is_superadmin
-                      ? <Badge><ShieldCheck className="h-3 w-3 mr-1" />Admin</Badge>
-                      : u.is_approved
-                      ? <Badge variant="secondary">Active</Badge>
-                      : <Badge variant="outline" className="text-amber-600 border-amber-300">Pending</Badge>}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">
-                    {new Date(u.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {!u.is_approved && (
-                        <Button size="sm" disabled={approveMut.isPending} onClick={() => approveMut.mutate(u.id)}>Approve</Button>
-                      )}
-                      {!u.is_superadmin && u.id !== me?.id && (
-                        <>
-                          {u.is_approved && (
-                            <Button size="sm" variant="outline" disabled={rejectMut.isPending}
-                              onClick={() => setRejectTarget({ id: u.id, username: u.username })}>
-                              Suspend
-                            </Button>
-                          )}
-                          <Button size="sm" variant="outline" disabled={promoteMut.isPending}
-                            onClick={() => setPromoteTarget({ id: u.id, username: u.username })}>
-                            Make admin
+              {paginated.map(u => {
+                const isPending = !u.is_approved;
+                return (
+                  <TableRow key={u.id} className={isPending ? "bg-amber-500/5" : ""}>
+                    <TableCell>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <UserAvatar userId={u.id} hasAvatar={u.has_avatar} initials={userInitials(u.full_name, u.username)} size={32} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {u.username}
+                            {u.id === me?.id && <span className="ml-1.5 text-xs text-muted-foreground font-normal">(you)</span>}
+                          </p>
+                          {u.full_name && <p className="text-xs text-muted-foreground truncate">{u.full_name}</p>}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground hidden md:table-cell">{u.email}</TableCell>
+                    <TableCell>
+                      {u.is_superadmin
+                        ? <Badge><ShieldCheck className="h-3 w-3 mr-1" />Admin</Badge>
+                        : u.is_approved
+                        ? <Badge variant="secondary">Active</Badge>
+                        : <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/30">Pending</Badge>}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell text-sm tabular-nums text-center">{u.tree_count}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{relativeTime(u.last_active_at)}</TableCell>
+                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {isPending && (
+                          <Button size="sm" className="h-7 text-xs" disabled={approveMut.isPending} onClick={() => approveMut.mutate(u.id)}>
+                            Approve
                           </Button>
-                          <Button size="sm" variant="outline" disabled={resetMut.isPending}
-                            onClick={() => resetMut.mutate(u.id)}>
-                            Reset link
-                          </Button>
-                          <Button size="sm" variant="ghost" className="text-destructive" disabled={deleteMut.isPending}
-                            onClick={() => setDeleteTarget({ id: u.id, username: u.username })}>
-                            Delete
-                          </Button>
-                        </>
-                      )}
-                      {u.is_superadmin && u.id !== me?.id && (
-                        <Button size="sm" variant="outline" disabled={demoteMut.isPending}
-                          onClick={() => setDemoteTarget({ id: u.id, username: u.username })}>
-                          Remove admin
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        )}
+                        {u.id !== me?.id && !u.is_superadmin && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent transition-colors">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {u.is_approved && (
+                                <DropdownMenuItem onClick={() => setRejectTarget({ id: u.id, username: u.username })}>
+                                  Suspend
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onClick={() => setPromoteTarget({ id: u.id, username: u.username })}>
+                                Make superadmin
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => resetMut.mutate(u.id)}>
+                                Generate reset link
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setDeleteTarget({ id: u.id, username: u.username })}
+                              >
+                                Delete user
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                        {u.id !== me?.id && u.is_superadmin && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent transition-colors">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setDemoteTarget({ id: u.id, username: u.username })}>
+                                Remove superadmin
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
                     {search || statusFilter !== "all" ? "No users match the current filters." : "No users yet."}
                   </TableCell>
                 </TableRow>
@@ -249,9 +282,7 @@ function UsersTab() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between shrink-0 px-1">
-          <span className="text-xs text-muted-foreground">
-            Page {page + 1} of {totalPages} · {filtered.length} users
-          </span>
+          <span className="text-xs text-muted-foreground">Page {page + 1} of {totalPages} · {filtered.length} users</span>
           <div className="flex gap-1">
             <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(0)}>«</Button>
             <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹ Prev</Button>
@@ -261,41 +292,36 @@ function UsersTab() {
         </div>
       )}
 
-      {/* Password reset link overlay */}
-      {resetUrl && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setResetUrl(null)}>
-          <Card className="w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <CardHeader><CardTitle className="text-base">Password reset link</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">Send this link via WhatsApp, Signal, or email. It expires in 24 hours and can only be used once.</p>
-              <Input value={resetUrl} readOnly className="font-mono text-xs" onClick={e => (e.target as HTMLInputElement).select()} />
-              <div className="flex gap-2">
-                <Button className="flex-1" onClick={() => { navigator.clipboard.writeText(resetUrl); toast.success("Copied to clipboard"); }}>Copy link</Button>
-                <Button variant="outline" onClick={() => setResetUrl(null)}>Close</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Password reset link dialog */}
+      <Dialog open={!!resetUrl} onOpenChange={(o) => { if (!o) setResetUrl(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Password reset link</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Send this via WhatsApp, Signal, or email. It expires in 24 hours and can only be used once.</p>
+            <Input value={resetUrl ?? ""} readOnly className="font-mono text-xs" onClick={e => (e.target as HTMLInputElement).select()} />
+            <div className="flex gap-2">
+              <Button className="flex-1" onClick={() => { navigator.clipboard.writeText(resetUrl!); toast.success("Copied to clipboard"); }}>Copy link</Button>
+              <Button variant="outline" onClick={() => setResetUrl(null)}>Close</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog open={!!rejectTarget} onClose={() => setRejectTarget(null)}
         onConfirm={() => { if (rejectTarget) rejectMut.mutate(rejectTarget.id); }}
         title={`Suspend ${rejectTarget?.username}?`}
         message="They won't be able to log in. Their data is kept. You can re-approve them later."
         confirmLabel="Suspend" destructive isPending={rejectMut.isPending} />
-
       <ConfirmDialog open={!!promoteTarget} onClose={() => setPromoteTarget(null)}
         onConfirm={() => { if (promoteTarget) promoteMut.mutate(promoteTarget.id); }}
         title={`Make ${promoteTarget?.username} a superadmin?`}
         message="They will have full access to the admin panel and all system settings."
         confirmLabel="Promote" isPending={promoteMut.isPending} />
-
       <ConfirmDialog open={!!demoteTarget} onClose={() => setDemoteTarget(null)}
         onConfirm={() => { if (demoteTarget) demoteMut.mutate(demoteTarget.id); }}
         title={`Remove admin from ${demoteTarget?.username}?`}
         message="They will lose access to the admin panel but keep their account and trees."
         confirmLabel="Remove admin" destructive isPending={demoteMut.isPending} />
-
       <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}
         onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); }}
         title={`Delete ${deleteTarget?.username}?`}
@@ -305,16 +331,79 @@ function UsersTab() {
   );
 }
 
+// ── Trees tab ─────────────────────────────────────────────────────────────────
+
+function TreesTab() {
+  const { data: trees, isLoading } = useQuery({ queryKey: adminKeys.trees, queryFn: listAllTrees });
+  const [search, setSearch] = useState("");
+
+  const filtered = (trees ?? []).filter(t => {
+    const q = search.trim().toLowerCase();
+    return !q || t.name.toLowerCase().includes(q) || (t.owner_username ?? "").toLowerCase().includes(q);
+  });
+
+  if (isLoading) return <TableRowsSkeleton rows={6} />;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Input
+        placeholder="Search by name or owner…"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="h-8 w-full sm:w-64"
+      />
+      <div className="border rounded-lg overflow-hidden">
+        <Table>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
+              <TableHead>Tree</TableHead>
+              <TableHead className="hidden sm:table-cell">Owner</TableHead>
+              <TableHead className="w-[70px]">Visibility</TableHead>
+              <TableHead className="hidden md:table-cell w-[80px] text-center">Members</TableHead>
+              <TableHead className="hidden md:table-cell w-[80px] text-center">People</TableHead>
+              <TableHead className="hidden lg:table-cell w-[80px] text-center">Stories</TableHead>
+              <TableHead className="hidden lg:table-cell w-[100px]">Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map(t => (
+              <TableRow key={t.id}>
+                <TableCell>
+                  <Link to={`/trees/${t.slug}`} className="text-sm font-medium hover:text-primary transition-colors">
+                    {t.name}
+                  </Link>
+                </TableCell>
+                <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{t.owner_username ?? "—"}</TableCell>
+                <TableCell>
+                  {t.is_public
+                    ? <span className="flex items-center gap-1 text-xs text-muted-foreground"><Globe className="h-3 w-3" />Public</span>
+                    : <span className="flex items-center gap-1 text-xs text-muted-foreground"><Lock className="h-3 w-3" />Private</span>}
+                </TableCell>
+                <TableCell className="hidden md:table-cell text-sm tabular-nums text-center">{t.member_count}</TableCell>
+                <TableCell className="hidden md:table-cell text-sm tabular-nums text-center">{t.person_count}</TableCell>
+                <TableCell className="hidden lg:table-cell text-sm tabular-nums text-center">{t.story_count}</TableCell>
+                <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString()}</TableCell>
+              </TableRow>
+            ))}
+            {filtered.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                  {search ? "No trees match the search." : "No trees yet."}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 // ── Invites tab ───────────────────────────────────────────────────────────────
 
 function InvitesTab() {
   const queryClient = useQueryClient();
-
-  const { data: invites, isLoading } = useQuery({
-    queryKey: adminKeys.invites,
-    queryFn:  listRegistrationInvites,
-  });
-
+  const { data: invites, isLoading } = useQuery({ queryKey: adminKeys.invites, queryFn: listRegistrationInvites });
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
   const [inviteEmail,  setInviteEmail]  = useState("");
   const [inviteNote,   setInviteNote]   = useState("");
@@ -334,13 +423,13 @@ function InvitesTab() {
       navigator.clipboard.writeText(link);
       toast.success("Invite created and link copied to clipboard");
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to create invite"),
   });
 
   const revokeMut = useMutation({
     mutationFn: revokeRegistrationInvite,
     onSuccess: () => { invalidate(); toast.success("Invite revoked"); },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to revoke invite"),
   });
 
   const outstanding = (invites ?? []).filter(i => !i.used_at && new Date(i.expires_at) > new Date());
@@ -358,7 +447,7 @@ function InvitesTab() {
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); createMut.mutate(); }} className="space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1.5 md:col-span-2">
-                <Label className="text-xs">Email <span className="text-muted-foreground">(optional — locks the invite to this address)</span></Label>
+                <Label className="text-xs">Email <span className="text-muted-foreground">(optional — locks invite to this address)</span></Label>
                 <Input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="cousin@example.com" />
               </div>
               <div className="space-y-1.5">
@@ -377,78 +466,81 @@ function InvitesTab() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Outstanding
-            {outstanding.length > 0 && <Badge variant="secondary" className="ml-2">{outstanding.length}</Badge>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {outstanding.length === 0
-            ? <p className="text-sm text-muted-foreground italic">No outstanding invites.</p>
-            : (
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader className="bg-muted/50">
-                    <TableRow>
-                      <TableHead>For</TableHead>
-                      <TableHead>Note</TableHead>
-                      <TableHead>Expires</TableHead>
-                      <TableHead className="w-36">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {outstanding.map(i => (
-                      <TableRow key={i.id}>
-                        <TableCell className="text-sm">{i.email || <span className="text-muted-foreground italic">anyone</span>}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{i.note || "—"}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{new Date(i.expires_at).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-1.5">
-                            <Button size="sm" variant="outline" onClick={() => copy(inviteLink(i.token))}>Copy</Button>
-                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRevokeTarget(i.id)}>Revoke</Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-        </CardContent>
-      </Card>
+      {outstanding.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              Outstanding <Badge variant="secondary">{outstanding.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead>For</TableHead>
+                  <TableHead className="hidden sm:table-cell">Note</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead className="w-[120px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {outstanding.map(i => (
+                  <TableRow key={i.id}>
+                    <TableCell className="text-sm">{i.email || <span className="text-muted-foreground italic">anyone</span>}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{i.note || "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{new Date(i.expires_at).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => copy(inviteLink(i.token))}>Copy</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => setRevokeTarget(i.id)}>Revoke</Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {outstanding.length === 0 && (
+        <p className="text-sm text-muted-foreground italic">No outstanding invites.</p>
+      )}
 
       {past.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Past invites</CardTitle></CardHeader>
-          <CardContent>
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader className="bg-muted/50">
-                  <TableRow>
-                    <TableHead>For</TableHead>
-                    <TableHead>Note</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
+          <CardHeader><CardTitle className="text-base text-muted-foreground">Past invites</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead>For</TableHead>
+                  <TableHead className="hidden sm:table-cell">Note</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Used by</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {past.map(i => (
+                  <TableRow key={i.id}>
+                    <TableCell className="text-sm">{i.email || <span className="text-muted-foreground italic">anyone</span>}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{i.note || "—"}</TableCell>
+                    <TableCell className="text-xs">
+                      {i.used_at
+                        ? <Badge variant="secondary" className="text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">Used</Badge>
+                        : <span className="text-muted-foreground">Expired</span>}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                      {i.used_by_username ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(i.used_at || i.expires_at).toLocaleDateString()}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {past.map(i => (
-                    <TableRow key={i.id}>
-                      <TableCell className="text-sm">{i.email || <span className="text-muted-foreground italic">anyone</span>}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{i.note || "—"}</TableCell>
-                      <TableCell className="text-xs">
-                        {i.used_at ? <span className="text-emerald-600">Used</span> : <span className="text-muted-foreground">Expired</span>}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(i.used_at || i.expires_at).toLocaleDateString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}
@@ -469,17 +561,18 @@ export function AdminPage() {
   if (user && !user.is_superadmin) return <Navigate to="/dashboard" replace />;
 
   return (
-    <div className="flex flex-col h-full min-h-0 max-w-5xl mx-auto w-full gap-3">
+    <div className="flex flex-col h-full min-h-0 max-w-6xl mx-auto w-full gap-3">
       <div className="shrink-0 space-y-1">
         <PageHeader items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Admin" }]} />
         <h1 className="text-xl font-bold">Admin</h1>
       </div>
 
       <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
-        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start shrink-0">
-          <TabsTrigger value="overview"  className="shrink-0">Overview</TabsTrigger>
-          <TabsTrigger value="users"     className="shrink-0">Users</TabsTrigger>
-          <TabsTrigger value="invites"   className="shrink-0">Invites</TabsTrigger>
+        <TabsList className="w-full">
+          <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
+          <TabsTrigger value="users"    className="flex-1">Users</TabsTrigger>
+          <TabsTrigger value="trees"    className="flex-1">Trees</TabsTrigger>
+          <TabsTrigger value="invites"  className="flex-1">Invites</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-4 overflow-auto min-h-0">
@@ -487,6 +580,9 @@ export function AdminPage() {
         </TabsContent>
         <TabsContent value="users" className="mt-4 overflow-hidden min-h-0 flex flex-col">
           <UsersTab />
+        </TabsContent>
+        <TabsContent value="trees" className="mt-4 overflow-auto min-h-0">
+          <TreesTab />
         </TabsContent>
         <TabsContent value="invites" className="mt-4 overflow-auto min-h-0">
           <InvitesTab />

@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import String, Date, DateTime, ForeignKey, Text, UniqueConstraint
+from sqlalchemy import String, Date, DateTime, ForeignKey, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,7 +14,7 @@ class Story(Base):
         ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    content: Mapped[str | None] = mapped_column(Text)
+    content_path: Mapped[str | None] = mapped_column(String(500), default=None)
     event_date: Mapped[date | None] = mapped_column(Date)
     event_end_date: Mapped[date | None] = mapped_column(Date)
     event_location: Mapped[str | None] = mapped_column(String(255))
@@ -36,6 +36,13 @@ class Story(Base):
     person_links = relationship("StoryPerson", back_populates="story", cascade="all, delete-orphan")
     media_items = relationship("Media", back_populates="story", cascade="all, delete-orphan", passive_deletes=True)
     tag_links = relationship("StoryTag", back_populates="story", cascade="all, delete-orphan")
+
+
+@event.listens_for(Story, "after_delete")
+def _cleanup_story_file(mapper, connection, target: Story) -> None:
+    if target.content_path:
+        from app.services.storage import delete_story_content
+        delete_story_content(target.content_path)
 
 
 class StoryPerson(Base):

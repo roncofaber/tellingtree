@@ -31,6 +31,7 @@ export interface GraphSettings {
   maxDepth: number; // 0 = unlimited
   style?: Partial<GraphStyle>;
   layout?: Partial<GraphLayout>;
+  cardStyle?: "card" | "bubble";
 }
 
 export const DEFAULT_STYLE: GraphStyle = {
@@ -118,17 +119,15 @@ export function buildCardHtml(
   const birthday = dd.birthday || "";
   const g = dd._gender ?? (dd.gender === "F" ? "female" : dd.gender === "M" ? "male" : "unknown");
   const accent = accentForGender(g, style);
-  const icon = genderIcon(g);
   const isMain = opts?.isMain ?? false;
   const isMe = opts?.isMe ?? false;
   const mainShadow = isMain ? `box-shadow:0 0 0 3px var(--color-primary), 0 0 14px 5px color-mix(in srgb, var(--color-primary) 40%, transparent);` : "";
-  const star = isMe ? `<span style="position:absolute;top:2px;right:4px;font-size:11px;line-height:1;" title="You">&#9733;</span>` : "";
+  const star = isMe ? `<span style="position:absolute;top:1px;right:3px;font-size:15px;line-height:1;color:#f97316;filter:drop-shadow(0 0 3px rgba(249,115,22,0.55));" title="You">&#9733;</span>` : "";
 
   if (!firstName && !lastName) {
     return `<div class="tt-card" style="position:relative;background:${style.cardBg};border-left:4px solid ${accent};${mainShadow}">
       ${star}
-      <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;">
-        <img src="${icon}" style="width:16px;height:16px;opacity:0.5;object-fit:contain;" />
+      <div style="padding:8px 10px;">
         <span style="font-size:12px;color:${style.mutedColor};font-style:italic;">Unnamed</span>
       </div>
     </div>`;
@@ -136,14 +135,43 @@ export function buildCardHtml(
 
   return `<div class="tt-card" style="position:relative;background:${style.cardBg};border-left:4px solid ${accent};${mainShadow}">
     ${star}
-    <div style="padding:7px 10px 6px 10px;display:flex;gap:7px;min-width:0;">
-      <img src="${icon}" style="width:18px;height:18px;opacity:0.45;object-fit:contain;flex-shrink:0;margin-top:1px;" />
-      <div style="min-width:0;overflow:hidden;max-width:130px;">
+    <div style="padding:7px 10px 6px 10px;min-width:0;">
+      <div style="min-width:0;overflow:hidden;max-width:150px;">
         ${firstName ? `<div style="font-size:12px;font-weight:500;color:${style.textColor};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${firstName}</div>` : ""}
         ${lastName ? `<div style="font-size:10.5px;font-weight:800;color:${accent};letter-spacing:0.06em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lastName.toUpperCase()}</div>` : ""}
         ${nickname ? `<div style="font-size:9.5px;font-style:italic;color:${style.mutedColor};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${nickname}"</div>` : ""}
         ${birthday ? `<div style="font-size:9px;color:${style.mutedColor};font-variant-numeric:tabular-nums;letter-spacing:0.02em;line-height:1.4;margin-top:1px;">${birthday}</div>` : ""}
       </div>
+    </div>
+  </div>`;
+}
+
+export function buildBubbleHtml(
+  dd: Record<string, string>,
+  style: GraphStyle,
+  opts?: { isMain?: boolean; isMe?: boolean },
+): string {
+  const firstName = dd["first name"] || "";
+  const lastName = dd["last name"] || "";
+  const g = dd._gender ?? (dd.gender === "F" ? "female" : dd.gender === "M" ? "male" : "unknown");
+  const accent = accentForGender(g, style);
+  const isMain = opts?.isMain ?? false;
+  const isMe = opts?.isMe ?? false;
+  const star = isMe ? `<span style="position:absolute;top:1px;right:3px;font-size:16px;line-height:1;color:#f97316;filter:drop-shadow(0 0 3px rgba(249,115,22,0.55));z-index:2;" title="You">&#9733;</span>` : "";
+  const initials = ((firstName[0] ?? "") + (lastName[0] ?? "")).toUpperCase() || "?";
+  const borderColor = isMain ? "var(--color-primary)" : accent;
+  const borderWidth = isMain ? "3px" : "2px";
+  const shadow = isMain ? `box-shadow:0 0 14px 5px color-mix(in srgb, var(--color-primary) 40%, transparent);` : "";
+
+  const avatarId = dd._avatarId || "";
+  return `<div class="tt-bubble" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 4px 6px;position:relative;">
+    ${star}
+    <div class="tt-bubble-circle" data-avatar-id="${avatarId}" style="width:60px;height:60px;border-radius:50%;border:${borderWidth} solid ${borderColor};${shadow}display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;background:color-mix(in srgb,${accent} 12%,${style.cardBg});">
+      <span class="tt-bubble-initials" style="font-size:20px;font-weight:700;color:${accent};user-select:none;">${initials}</span>
+    </div>
+    <div style="text-align:center;width:82px;overflow:hidden;">
+      ${firstName ? `<div style="font-size:9.5px;font-weight:600;color:var(--foreground);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${firstName}</div>` : ""}
+      ${lastName ? `<div style="font-size:8.5px;font-weight:800;color:${accent};letter-spacing:0.04em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lastName.toUpperCase()}</div>` : ""}
     </div>
   </div>`;
 }

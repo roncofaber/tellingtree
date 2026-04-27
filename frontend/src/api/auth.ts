@@ -60,6 +60,10 @@ export function deleteAvatar() {
   return apiClient.delete<User>("/users/me/avatar");
 }
 
+export function updatePreferences(data: Record<string, unknown>) {
+  return apiClient.patch<User>("/users/me/preferences", data);
+}
+
 export async function fetchAvatarBlob(userId: string): Promise<string> {
   const { getAccessToken } = await import("./client");
   const token = getAccessToken();

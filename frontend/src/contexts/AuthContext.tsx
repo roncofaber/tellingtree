@@ -9,7 +9,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { API_PREFIX } from "@/lib/constants";
 import { setTokens, clearTokens, setOnAuthFailure } from "@/api/client";
 import * as authApi from "@/api/auth";
-import type { User } from "@/types/api";
+import { setTheme } from "@/lib/theme";
+import type { User, UserPreferences } from "@/types/api";
 
 interface AuthState {
   user: User | null;
@@ -25,9 +26,14 @@ interface AuthState {
   ) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  updatePreferences: (data: Partial<UserPreferences>) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthState | null>(null);
+
+function applyPreferences(prefs: UserPreferences | null | undefined) {
+  if (prefs?.theme) setTheme(prefs.theme);
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -58,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const data = await resp.json();
           setTokens(data.access_token);
           const me = await authApi.getMe();
+          applyPreferences(me.preferences);
           setUser(me);
         }
       } catch {
@@ -74,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = await authApi.login({ username, password });
     setTokens(token.access_token);
     const me = await authApi.getMe();
+    applyPreferences(me.preferences);
     setUser(me);
   };
 
@@ -101,10 +109,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = async () => {
     try {
       const me = await authApi.getMe();
+      applyPreferences(me.preferences);
       setUser(me);
     } catch {
       // not logged in
     }
+  };
+
+  const updatePreferences = async (data: Partial<UserPreferences>) => {
+    const updated = await authApi.updatePreferences(data);
+    applyPreferences(updated.preferences);
+    setUser(updated);
   };
 
   return (
@@ -117,6 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         refreshUser,
+        updatePreferences,
       }}
     >
       {children}

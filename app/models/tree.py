@@ -24,6 +24,7 @@ class Tree(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(280), nullable=False, unique=True, index=True)
     description: Mapped[str | None] = mapped_column(String, default=None)
+    icon: Mapped[str | None] = mapped_column(String(100), default=None)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

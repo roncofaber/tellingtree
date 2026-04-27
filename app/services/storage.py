@@ -55,8 +55,13 @@ def get_media_type(mime_type: str) -> str:
     return "document"
 
 
+def make_media_path(tree_id: uuid.UUID, media_id: uuid.UUID, extension: str) -> str:
+    return f"images/{tree_id}/{media_id}{extension}"
+
+
+# Keep old name as alias — used in the migration downgrade path
 def make_relative_path(tree_id: uuid.UUID, media_id: uuid.UUID, extension: str) -> str:
-    return f"{tree_id}/{media_id}{extension}"
+    return make_media_path(tree_id, media_id, extension)
 
 
 def resolve_path(relative_path: str) -> Path:
@@ -64,7 +69,7 @@ def resolve_path(relative_path: str) -> Path:
 
 
 def save_file(tree_id: uuid.UUID, media_id: uuid.UUID, content: bytes, extension: str) -> str:
-    relative = make_relative_path(tree_id, media_id, extension)
+    relative = make_media_path(tree_id, media_id, extension)
     full_path = resolve_path(relative)
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_bytes(content)
@@ -75,6 +80,29 @@ def delete_file(storage_path: str) -> None:
     path = resolve_path(storage_path)
     if path.exists():
         path.unlink()
+
+
+# ── Stories ──────────────────────────────────────────────────────────────────
+
+def make_story_path(tree_id: uuid.UUID, story_id: uuid.UUID) -> str:
+    return f"stories/{tree_id}/{story_id}.json"
+
+
+def save_story_content(tree_id: uuid.UUID, story_id: uuid.UUID, content: str) -> str:
+    relative = make_story_path(tree_id, story_id)
+    full_path = resolve_path(relative)
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_text(content, encoding="utf-8")
+    return relative
+
+
+def read_story_content(content_path: str) -> str | None:
+    path = resolve_path(content_path)
+    return path.read_text(encoding="utf-8") if path.exists() else None
+
+
+def delete_story_content(content_path: str) -> None:
+    resolve_path(content_path).unlink(missing_ok=True)
 
 
 # ── Avatars ─────────────────────────────────────────────────────────────────────

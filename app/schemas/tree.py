@@ -7,12 +7,14 @@ from pydantic import BaseModel, Field
 class TreeCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
+    icon: str | None = None
     is_public: bool = False
 
 
 class TreeUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
+    icon: str | None = None
     is_public: bool | None = None
     slug: str | None = Field(None, min_length=1, max_length=280, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -23,6 +25,7 @@ class TreeResponse(BaseModel):
     name: str
     slug: str
     description: str | None
+    icon: str | None
     is_public: bool
     created_at: datetime
     updated_at: datetime

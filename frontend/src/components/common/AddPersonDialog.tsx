@@ -54,7 +54,7 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
   const [deathLoc,     setDeathLoc]     = useState("");
   const [deathPlaceId, setDeathPlaceId] = useState<string | null>(null);
   const [sex,          setSex]          = useState("unknown");
-  const [isLiving,     setIsLiving]     = useState("");
+  const [isDeceased,   setIsDeceased]   = useState(false);
   const [occupation,   setOccupation]   = useState("");
   const [nationalities, setNationalities] = useState("");
   const [education,    setEducation]    = useState("");
@@ -62,6 +62,7 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
   const [coupleType,   setCoupleType]   = useState<"spouse" | "partner">("spouse");
   const [relStart,     setRelStart]     = useState("");
   const [relEnd,       setRelEnd]       = useState("");
+  const [relEnded,     setRelEnded]     = useState(false);
 
   // Sibling: which parent(s) to use
   const [siblingParentIds, setSiblingParentIds] = useState<string[]>([]);
@@ -82,19 +83,27 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
 
   const anchorParents = useMemo(() => {
     if (!anchorRels || !relationship?.anchorId) return [];
-    return anchorRels
-      .filter(r =>
-        (r.relationship_type === "parent" && r.person_b_id === relationship.anchorId) ||
-        (r.relationship_type === "child" && r.person_a_id === relationship.anchorId)
-      )
-      .map(r => r.relationship_type === "parent" ? r.person_a_id : r.person_b_id);
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const r of anchorRels) {
+      let parentId: string | null = null;
+      if (r.relationship_type === "parent" && r.person_b_id === relationship.anchorId) parentId = r.person_a_id;
+      else if (r.relationship_type === "child" && r.person_a_id === relationship.anchorId) parentId = r.person_b_id;
+      if (parentId && !seen.has(parentId)) { seen.add(parentId); result.push(parentId); }
+    }
+    return result;
   }, [anchorRels, relationship]);
 
   const anchorSpouses = useMemo(() => {
     if (!anchorRels || !relationship?.anchorId) return [];
-    return anchorRels
-      .filter(r => r.relationship_type === "spouse" || r.relationship_type === "partner")
-      .map(r => r.person_a_id === relationship.anchorId ? r.person_b_id : r.person_a_id);
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const r of anchorRels) {
+      if (r.relationship_type !== "spouse" && r.relationship_type !== "partner") continue;
+      const otherId = r.person_a_id === relationship.anchorId ? r.person_b_id : r.person_a_id;
+      if (!seen.has(otherId)) { seen.add(otherId); result.push(otherId); }
+    }
+    return result;
   }, [anchorRels, relationship]);
 
   // Auto-select shared parents (sibling) or co-parents (child) when they load
@@ -154,9 +163,9 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
     setBirthLoc(""); setBirthPlaceId(null);
     setDeathDate(""); setDeathDateQ("exact"); setDeathDate2("");
     setDeathLoc(""); setDeathPlaceId(null);
-    setSex("unknown"); setIsLiving(""); setOccupation("");
+    setSex("unknown"); setIsDeceased(false); setOccupation("");
     setNationalities(""); setEducation(""); setBio("");
-    setCoupleType("spouse"); setRelStart(""); setRelEnd("");
+    setCoupleType("spouse"); setRelStart(""); setRelEnd(""); setRelEnded(false);
     setSiblingParentIds([]); setParentsInitialized(false);
   };
 
@@ -202,7 +211,7 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
         death_date_qualifier: deathDateQ !== "exact" ? deathDateQ : undefined,
         death_date_2: deathDateQ === "between" ? deathDate2 || undefined : undefined,
         death_location: deathLoc || undefined, death_place_id: deathPlaceId || undefined,
-        is_living: isLiving === "true" ? true : isLiving === "false" ? false : undefined,
+        is_living: isDeceased ? false : undefined,
         occupation: occupation || undefined, education: education || undefined, bio: bio || undefined,
         nationalities: nationalities ? nationalities.split(",").map(s => s.trim()).filter(Boolean) : undefined,
       });
@@ -335,14 +344,14 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
                 <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Names</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Given Name</Label>
+                    <Label className="text-xs">First Name</Label>
                     <Input value={givenName} onChange={(e) => setGivenName(e.target.value)} autoFocus className={fieldBorder("givenName")} />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Family Name</Label>
+                    <Label className="text-xs">Last Name</Label>
                     <Input value={familyName} onChange={(e) => setFamilyName(e.target.value)} className={fieldBorder("familyName")} />
                   </div>
-                  <div className="space-y-1"><Label className="text-xs">Birth Name</Label><Input value={maidenName} onChange={(e) => setMaidenName(e.target.value)} placeholder="Birth surname" /></div>
+                  <div className="space-y-1"><Label className="text-xs">Maiden / Birth Name</Label><Input value={maidenName} onChange={(e) => setMaidenName(e.target.value)} placeholder="Birth surname" /></div>
                   <div className="space-y-1"><Label className="text-xs">Nickname</Label><Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder='"Bud"' /></div>
                 </div>
                 {submitted && !hasName && <p className="text-xs text-destructive">At least a given name or family name is required.</p>}
@@ -361,14 +370,35 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
                 </div>
                 <div className="space-y-1"><Label className="text-xs">Birth Location</Label><LocationInput value={birthLoc} onChange={(v, pid) => { setBirthLoc(v); setBirthPlaceId(pid); }} /></div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Death Date</Label>
-                  <div className="flex gap-2">
-                    <QualifierSelect value={deathDateQ} onChange={setDeathDateQ} />
-                    <Input type="date" value={deathDate} onChange={(e) => setDeathDate(e.target.value)} />
-                  </div>
-                  {deathDateQ === "between" && <Input type="date" value={deathDate2} onChange={(e) => setDeathDate2(e.target.value)} placeholder="End date" />}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isDeceased}
+                      onChange={e => {
+                        setIsDeceased(e.target.checked);
+                        if (!e.target.checked) {
+                          setDeathDate(""); setDeathDateQ("exact"); setDeathDate2("");
+                          setDeathLoc(""); setDeathPlaceId(null);
+                        }
+                      }}
+                      className="rounded"
+                    />
+                    <span className="text-xs font-medium">Deceased</span>
+                  </label>
                 </div>
-                <div className="space-y-1"><Label className="text-xs">Death Location</Label><LocationInput value={deathLoc} onChange={(v, pid) => { setDeathLoc(v); setDeathPlaceId(pid); }} /></div>
+                {isDeceased && (
+                  <>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Death Date</Label>
+                      <div className="flex gap-2">
+                        <QualifierSelect value={deathDateQ} onChange={setDeathDateQ} />
+                        <Input type="date" value={deathDate} onChange={(e) => setDeathDate(e.target.value)} />
+                      </div>
+                      {deathDateQ === "between" && <Input type="date" value={deathDate2} onChange={(e) => setDeathDate2(e.target.value)} placeholder="End date" />}
+                    </div>
+                    <div className="space-y-1"><Label className="text-xs">Death Location</Label><LocationInput value={deathLoc} onChange={(v, pid) => { setDeathLoc(v); setDeathPlaceId(pid); }} /></div>
+                  </>
+                )}
               </fieldset>
 
               <fieldset className="space-y-2">
@@ -379,13 +409,6 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
                     <Select value={sex} onValueChange={(v) => { if (v !== null) setSex(v); }}>
                       <SelectTrigger className="w-full"><span>{sex.charAt(0).toUpperCase() + sex.slice(1)}</span></SelectTrigger>
                       <SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem><SelectItem value="other">Other</SelectItem><SelectItem value="unknown">Unknown</SelectItem></SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Status</Label>
-                    <Select value={isLiving} onValueChange={(v) => { if (v !== null) setIsLiving(v); }}>
-                      <SelectTrigger className="w-full"><span className={isLiving ? "" : "text-muted-foreground"}>{isLiving === "true" ? "Living" : isLiving === "false" ? "Deceased" : "Unknown"}</span></SelectTrigger>
-                      <SelectContent><SelectItem value="true">Living</SelectItem><SelectItem value="false">Deceased</SelectItem><SelectItem value="">Unknown</SelectItem></SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1"><Label className="text-xs">Occupation</Label><Input value={occupation} onChange={e => setOccupation(e.target.value)} /></div>
@@ -409,10 +432,27 @@ export function AddPersonDialog({ open, onClose, treeId, relationship }: Props) 
                   <SelectContent><SelectItem value="spouse">Spouse (married)</SelectItem><SelectItem value="partner">Partner</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1"><Label className="text-xs">Start Date <span className="text-muted-foreground">(optional)</span></Label><Input type="date" value={relStart} onChange={(e) => setRelStart(e.target.value)} /></div>
-                <div className="space-y-1"><Label className="text-xs">End Date <span className="text-muted-foreground">(if ended)</span></Label><Input type="date" value={relEnd} onChange={(e) => setRelEnd(e.target.value)} /></div>
+              <div className="space-y-1">
+                <Label className="text-xs">Start Date <span className="text-muted-foreground">(optional)</span></Label>
+                <Input type="date" value={relStart} onChange={(e) => setRelStart(e.target.value)} />
               </div>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={relEnded}
+                    onChange={e => { setRelEnded(e.target.checked); if (!e.target.checked) setRelEnd(""); }}
+                    className="rounded"
+                  />
+                  <span className="text-xs font-medium">Ended</span>
+                </label>
+              </div>
+              {relEnded && (
+                <div className="space-y-1">
+                  <Label className="text-xs">End Date</Label>
+                  <Input type="date" value={relEnd} onChange={(e) => setRelEnd(e.target.value)} />
+                </div>
+              )}
             </fieldset>
           )}
 

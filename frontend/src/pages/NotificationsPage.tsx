@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Check } from "lucide-react";
@@ -43,8 +44,18 @@ export function NotificationsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   });
 
+  // Clear the badge automatically when the page is opened.
+  useEffect(() => {
+    markAllMut.mutate();
+  }, []); // eslint-disable-line
+
   const handleClick = (n: Notification) => {
     if (!n.read_at) markReadMut.mutate(n.id);
+    if (!n.tree_id) {
+      if (n.type === "user_pending_approval") navigate("/admin");
+      else if (n.type === "account_approved") navigate("/dashboard");
+      return;
+    }
     const slug = trees?.items?.find((t: { id: string; slug: string }) => t.id === n.tree_id)?.slug;
     if (!slug || !n.entity_id) return;
     if (n.entity_type === "person") navigate(`/trees/${slug}/people/${n.entity_id}`);

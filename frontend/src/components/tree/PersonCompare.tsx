@@ -202,8 +202,8 @@ export function PersonCompare({ treeId, personAId, personBId, onMerged }: Props)
             }}
             title="Confirm merge"
             message={confirmMerge === "b-into-a"
-              ? `Keep "${getFullName(personA)}" and merge all data from "${getFullName(personB)}" into them. ${getFullName(personB)} will be removed.`
-              : `Keep "${getFullName(personB)}" and merge all data from "${getFullName(personA)}" into them. ${getFullName(personA)} will be removed.`
+              ? `Keep "${getFullName(personA)}" and merge all data from "${getFullName(personB)}" into them. All relationships, stories, and media from ${getFullName(personB)} will be transferred and they will be deleted. This cannot be undone.`
+              : `Keep "${getFullName(personB)}" and merge all data from "${getFullName(personA)}" into them. All relationships, stories, and media from ${getFullName(personA)} will be transferred and they will be deleted. This cannot be undone.`
             }
             confirmLabel="Merge"
             isPending={mergeMut.isPending}

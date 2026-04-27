@@ -29,6 +29,7 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { LocationInput } from "@/components/common/LocationInput";
 import { PageHeader } from "@/components/common/PageHeader";
+import { AvatarCropDialog } from "@/components/common/AvatarCropDialog";
 import type { Relationship } from "@/types/relationship";
 
 import { QualifierSelect } from "@/components/common/QualifierSelect";
@@ -141,6 +142,7 @@ export function PersonDetailPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isMe, setIsMe] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeSearch, setMergeSearch] = useState("");
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
@@ -168,6 +170,11 @@ export function PersonDetailPage() {
 
   const treeId = tree?.id;
   const base = `/trees/${treeSlug}`;
+
+  useEffect(() => {
+    if (!treeId || !personId) return;
+    setIsMe(loadGraphSettings(treeId).myPersonId === personId);
+  }, [treeId, personId]);
 
   const { data: person, isLoading, error } = useQuery({
     queryKey: queryKeys.persons.detail(treeId!, personId!),
@@ -229,12 +236,14 @@ export function PersonDetailPage() {
   const [relType,    setRelType]      = useState("");
   const [relStart,   setRelStart]     = useState("");
   const [relEnd,     setRelEnd]       = useState("");
+  const [relEnded,   setRelEnded]     = useState(false);
 
   const [addRelative, setAddRelative] = useState<AddPersonRelationship | null>(null);
 
   const startRelEdit = (rel: Relationship) => {
     setEditingRel(rel); setRelType(rel.relationship_type);
     setRelStart(rel.start_date ?? ""); setRelEnd(rel.end_date ?? "");
+    setRelEnded(!!rel.end_date);
   };
 
   const updateRelMut = useMutation({
@@ -318,6 +327,7 @@ export function PersonDetailPage() {
     onError: (e) => { toast.error(e instanceof Error ? e.message : "Failed to upload picture"); },
   });
 
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!person?.profile_picture_id || !treeId) { setProfilePicUrl(null); return; }
@@ -353,13 +363,13 @@ export function PersonDetailPage() {
   const name     = [person.given_name, person.family_name].filter(Boolean).join(" ") || "Unnamed";
   const initials = ((person.given_name?.[0] ?? "") + (person.family_name?.[0] ?? "")).toUpperCase() || "?";
 
-  const isMe = treeId ? loadGraphSettings(treeId).myPersonId === personId : false;
   const toggleMe = () => {
     if (!treeId) return;
     const s = loadGraphSettings(treeId);
-    const next = isMe ? { ...s, myPersonId: null } : { ...s, myPersonId: personId!, defaultRootPersonId: personId! };
-    saveGraphSettings(treeId, next);
-    toast.success(isMe ? `Removed as "you" in this tree` : `${name} set as you in this tree`);
+    const next = !isMe;
+    saveGraphSettings(treeId, next ? { ...s, myPersonId: personId!, defaultRootPersonId: personId! } : { ...s, myPersonId: null });
+    setIsMe(next);
+    toast.success(next ? `${name} set as you in this tree` : `Removed as "you" in this tree`);
   };
 
   const birthFmt = formatFlexDate(person.birth_date, person.birth_date_qualifier, person.birth_date_2, person.birth_date_original);
@@ -385,8 +395,8 @@ export function PersonDetailPage() {
         {/* Names */}
         <SectionCard title="Names">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <div className="space-y-1"><Label className="text-xs">Given Name</Label><Input value={form.given_name} onChange={set("given_name")} /></div>
-            <div className="space-y-1"><Label className="text-xs">Family Name</Label><Input value={form.family_name} onChange={set("family_name")} /></div>
+            <div className="space-y-1"><Label className="text-xs">First Name</Label><Input value={form.given_name} onChange={set("given_name")} /></div>
+            <div className="space-y-1"><Label className="text-xs">Last Name</Label><Input value={form.family_name} onChange={set("family_name")} /></div>
             <div className="space-y-1"><Label className="text-xs">Maiden / Birth Name</Label><Input value={form.maiden_name} onChange={set("maiden_name")} placeholder="Birth surname" /></div>
             <div className="space-y-1"><Label className="text-xs">Nickname</Label><Input value={form.nickname} onChange={set("nickname")} placeholder='e.g. "Bud"' /></div>
           </div>
@@ -408,17 +418,35 @@ export function PersonDetailPage() {
               <LocationInput value={form.birth_location} onChange={(v, pid) => setForm(f => ({ ...f, birth_location: v, birth_place_id: pid }))} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Death Date</Label>
-              <div className="flex gap-2">
-                <QualifierSelect value={form.death_date_qualifier} onChange={(v) => setForm(f => ({ ...f, death_date_qualifier: v }))} />
-                <Input type="date" value={form.death_date} onChange={set("death_date")} />
-              </div>
-              {form.death_date_qualifier === "between" && <Input type="date" value={form.death_date_2} onChange={set("death_date_2")} placeholder="End date" />}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.is_living === "false"}
+                  onChange={e => setForm(f => e.target.checked
+                    ? { ...f, is_living: "false" }
+                    : { ...f, is_living: "", death_date: "", death_date_2: "", death_date_qualifier: "exact", death_location: "", death_place_id: null }
+                  )}
+                  className="rounded"
+                />
+                <span className="text-xs font-medium">Deceased</span>
+              </label>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Death Location</Label>
-              <LocationInput value={form.death_location} onChange={(v, pid) => setForm(f => ({ ...f, death_location: v, death_place_id: pid }))} />
-            </div>
+            {form.is_living === "false" && (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs">Death Date</Label>
+                  <div className="flex gap-2">
+                    <QualifierSelect value={form.death_date_qualifier} onChange={(v) => setForm(f => ({ ...f, death_date_qualifier: v }))} />
+                    <Input type="date" value={form.death_date} onChange={set("death_date")} />
+                  </div>
+                  {form.death_date_qualifier === "between" && <Input type="date" value={form.death_date_2} onChange={set("death_date_2")} placeholder="End date" />}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Death Location</Label>
+                  <LocationInput value={form.death_location} onChange={(v, pid) => setForm(f => ({ ...f, death_location: v, death_place_id: pid }))} />
+                </div>
+              </>
+            )}
           </div>
         </SectionCard>
 
@@ -430,13 +458,6 @@ export function PersonDetailPage() {
               <Select value={form.gender} onValueChange={(v) => { if (v !== null) setForm(f => ({ ...f, gender: v })); }}>
                 <SelectTrigger className="w-full"><span className={form.gender ? undefined : "text-muted-foreground"}>{form.gender ? form.gender.charAt(0).toUpperCase() + form.gender.slice(1) : "Select sex"}</span></SelectTrigger>
                 <SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem><SelectItem value="other">Other</SelectItem><SelectItem value="unknown">Unknown</SelectItem></SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Status</Label>
-              <Select value={form.is_living} onValueChange={(v) => { if (v !== null) setForm(f => ({ ...f, is_living: v as FormState["is_living"] })); }}>
-                <SelectTrigger className="w-full"><span className={form.is_living ? undefined : "text-muted-foreground"}>{form.is_living === "true" ? "Living" : form.is_living === "false" ? "Deceased" : "Unknown"}</span></SelectTrigger>
-                <SelectContent><SelectItem value="true">Living</SelectItem><SelectItem value="false">Deceased</SelectItem><SelectItem value="">Unknown</SelectItem></SelectContent>
               </Select>
             </div>
             <div className="space-y-1"><Label className="text-xs">Occupation</Label><Input value={form.occupation} onChange={set("occupation")} /></div>
@@ -478,28 +499,30 @@ export function PersonDetailPage() {
 
       {/* Header */}
       <input ref={picRef} type="file" accept="image/*" className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) picMut.mutate(f); }} />
-      <div className="flex items-start gap-4">
-        <button onClick={() => picRef.current?.click()} className="relative group shrink-0" title="Change photo" disabled={picMut.isPending}>
-          <Avatar initials={initials} imgUrl={profilePicUrl} size={72} />
-          <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <span className="text-white text-xs font-medium">{picMut.isPending ? "…" : "Edit"}</span>
+        onChange={e => { const f = e.target.files?.[0]; if (f) setCropFile(f); e.target.value = ""; }} />
+      <div className="space-y-3">
+        <div className="flex items-start gap-4">
+          <button onClick={() => picRef.current?.click()} className="relative group shrink-0" title="Change photo" disabled={picMut.isPending}>
+            <Avatar initials={initials} imgUrl={profilePicUrl} size={72} />
+            <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <span className="text-white text-xs font-medium">{picMut.isPending ? "…" : "Edit"}</span>
+            </div>
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold leading-tight">
+              {name}
+              {person.maiden_name && <span className="text-lg font-normal text-muted-foreground ml-2">(née {person.maiden_name})</span>}
+            </h1>
+            {person.nickname && <p className="text-sm text-muted-foreground italic">"{person.nickname}"</p>}
+            <p className="text-sm text-muted-foreground mt-1">
+              {birthFmt && deathFmt ? `${birthFmt} – ${deathFmt}` : birthFmt ? `b. ${birthFmt}` : deathFmt ? `d. ${deathFmt}` : null}
+              {(birthPlace?.display_name || person.birth_location) && (
+                <span> · {birthPlace?.display_name ?? person.birth_location}</span>
+              )}
+            </p>
           </div>
-        </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold leading-tight">
-            {name}
-            {person.maiden_name && <span className="text-lg font-normal text-muted-foreground ml-2">(née {person.maiden_name})</span>}
-          </h1>
-          {person.nickname && <p className="text-sm text-muted-foreground italic">"{person.nickname}"</p>}
-          <p className="text-sm text-muted-foreground mt-1">
-            {birthFmt && deathFmt ? `${birthFmt} – ${deathFmt}` : birthFmt ? `b. ${birthFmt}` : deathFmt ? `d. ${deathFmt}` : null}
-            {(birthPlace?.display_name || person.birth_location) && (
-              <span> · {birthPlace?.display_name ?? person.birth_location}</span>
-            )}
-          </p>
         </div>
-        <div className="flex gap-2 shrink-0 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -589,7 +612,7 @@ export function PersonDetailPage() {
               return (
                 <div className="rounded-lg border bg-muted/50 p-3 text-sm space-y-1">
                   <p>Merge <span className="font-semibold">{tName}</span> into <span className="font-semibold">{name}</span></p>
-                  <p className="text-xs text-muted-foreground">All relationships, stories, and media from {tName} will be transferred. Empty fields will be filled from their data.</p>
+                  <p className="text-xs text-muted-foreground">All relationships, stories, and media from {tName} will be transferred and they will be deleted. This cannot be undone.</p>
                 </div>
               );
             })()}
@@ -626,9 +649,10 @@ export function PersonDetailPage() {
           });
         }
 
-        if (person.death_date || person.death_location || person.death_place_id) {
+        if (person.death_date || person.death_location || person.death_place_id || person.is_living === false) {
           const loc = deathPlace?.display_name ?? person.death_location;
-          items.push({ date: deathFmt, sortKey: person.death_date ?? "9999", type: "death", label: "Died", sublabel: loc ?? undefined });
+          const dateLabel = deathFmt || (person.is_living === false && !person.death_date ? "Unknown" : null);
+          items.push({ date: dateLabel, sortKey: person.death_date ?? "9999", type: "death", label: "Died", sublabel: loc ?? undefined });
         }
 
         if (items.length === 0) return null;
@@ -640,26 +664,14 @@ export function PersonDetailPage() {
         return (
           <SectionCard title="Timeline">
             <div className="relative pl-6">
-              <div className="relative space-y-4" ref={(el) => {
-                if (!el || items.length < 2) return;
-                const line = el.querySelector("[data-timeline-line]") as HTMLElement;
-                if (!line) return;
-                const firstChild = el.children[1] as HTMLElement;
-                const lastChild = el.children[el.children.length - 1] as HTMLElement;
-                if (!firstChild || !lastChild) return;
-                const top = firstChild.offsetTop + 10;
-                const bottom = lastChild.offsetTop + 10;
-                line.style.top = `${top}px`;
-                line.style.height = `${bottom - top}px`;
-              }}>
-                {/* Single continuous line from first dot to last dot */}
-                {items.length > 1 && (
-                  <div data-timeline-line className="absolute left-[-17px] w-[2px] bg-border rounded-full" />
-                )}
-
+              <div className="relative">
                 {items.map((item, i) => (
-                  <div key={i} className="relative flex gap-3 items-start">
-                    {/* Dot — centered on line */}
+                  <div key={i} className={`relative flex gap-3 items-start ${i < items.length - 1 ? "pb-4" : ""}`}>
+                    {/* Connector line to next item — drawn behind the dot via z-index */}
+                    {i < items.length - 1 && (
+                      <div className="absolute w-[2px] bg-border rounded-full" style={{ left: "-17px", top: "11px", bottom: "-10px" }} />
+                    )}
+                    {/* Dot */}
                     <div className={`absolute top-[6px] w-[9px] h-[9px] rounded-full border-2 border-background ${dotColor(item.type)} z-[1]`} style={{ left: "-20.5px" }} />
 
                     {/* Content */}
@@ -812,9 +824,22 @@ export function PersonDetailPage() {
               </Select>
             </div>
             {(relType === "spouse" || relType === "partner") && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-3">
                 <div className="space-y-1"><Label className="text-xs">Start Date</Label><Input type="date" value={relStart} onChange={e => setRelStart(e.target.value)} /></div>
-                <div className="space-y-1"><Label className="text-xs">End Date</Label><Input type="date" value={relEnd} onChange={e => setRelEnd(e.target.value)} /></div>
+                <div className="space-y-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={relEnded}
+                      onChange={e => { setRelEnded(e.target.checked); if (!e.target.checked) setRelEnd(""); }}
+                      className="rounded"
+                    />
+                    <span className="text-xs font-medium">Ended</span>
+                  </label>
+                </div>
+                {relEnded && (
+                  <div className="space-y-1"><Label className="text-xs">End Date</Label><Input type="date" value={relEnd} onChange={e => setRelEnd(e.target.value)} /></div>
+                )}
               </div>
             )}
             <div className="flex gap-2">
@@ -824,6 +849,17 @@ export function PersonDetailPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {cropFile && (
+        <AvatarCropDialog
+          file={cropFile}
+          onConfirm={(blob) => {
+            setCropFile(null);
+            picMut.mutate(new File([blob], "photo.jpg", { type: "image/jpeg" }));
+          }}
+          onCancel={() => setCropFile(null)}
+        />
+      )}
     </div>
     </div>
   );

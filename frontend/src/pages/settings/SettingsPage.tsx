@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import { ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -12,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { UserAvatar, userInitials } from "@/components/common/UserAvatar";
 import { PasswordFields, passwordStrength, MIN_PASSWORD_SCORE } from "@/components/common/PasswordFields";
+import { AvatarCropDialog } from "@/components/common/AvatarCropDialog";
 
 export function SettingsPage() {
   const { user, refreshUser, logout } = useAuth();
@@ -29,6 +31,7 @@ export function SettingsPage() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [avatarVersion, setAvatarVersion] = useState(0);
+  const [cropFile, setCropFile] = useState<File | null>(null);
 
   const profileMut = useMutation({
     mutationFn: () => authApi.updateMe({ full_name: fullName, email }),
@@ -111,7 +114,7 @@ export function SettingsPage() {
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) avatarUploadMut.mutate(f);
+                    if (f) setCropFile(f);
                     e.target.value = "";
                   }}
                 />
@@ -209,6 +212,27 @@ export function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      <Separator />
+
+      <Card>
+        <CardContent className="p-5 flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">TellingTree <span className="text-muted-foreground font-normal">v0.1.0</span></p>
+            <p className="text-xs text-muted-foreground">Open-source genealogy app focused on storytelling and memories.</p>
+            <p className="text-xs text-muted-foreground">Released under the MIT License.</p>
+          </div>
+          <a
+            href="https://github.com/roncofaber/tellingtree"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            GitHub
+          </a>
+        </CardContent>
+      </Card>
     </div>
 
     <ConfirmDialog
@@ -221,6 +245,17 @@ export function SettingsPage() {
       destructive
       isPending={deleteMut.isPending}
     />
+
+    {cropFile && (
+      <AvatarCropDialog
+        file={cropFile}
+        onConfirm={(blob) => {
+          setCropFile(null);
+          avatarUploadMut.mutate(new File([blob], "avatar.jpg", { type: "image/jpeg" }));
+        }}
+        onCancel={() => setCropFile(null)}
+      />
+    )}
     </div>
   );
 }

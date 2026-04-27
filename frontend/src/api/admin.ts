@@ -9,6 +9,7 @@ export interface RegistrationInvite {
   expires_at: string;
   used_at: string | null;
   used_by: string | null;
+  used_by_username: string | null;
   created_at: string;
   created_by: string | null;
 }
@@ -20,8 +21,28 @@ export interface AdminStats {
   users_superadmin: number;
   trees_total: number;
   trees_public: number;
+  persons_total: number;
+  stories_total: number;
   invites_outstanding: number;
   invites_used: number;
+}
+
+export interface AdminUser extends User {
+  tree_count: number;
+}
+
+export interface AdminTree {
+  id: string;
+  name: string;
+  slug: string;
+  is_public: boolean;
+  owner_id: string;
+  owner_username: string | null;
+  member_count: number;
+  person_count: number;
+  story_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export function getAdminStats() {
@@ -45,7 +66,11 @@ export function revokeRegistrationInvite(inviteId: string) {
 }
 
 export function listAllUsers() {
-  return apiClient.get<User[]>("/admin/users");
+  return apiClient.get<AdminUser[]>("/admin/users");
+}
+
+export function listAllTrees() {
+  return apiClient.get<AdminTree[]>("/admin/trees");
 }
 
 export function approveUser(userId: string) {

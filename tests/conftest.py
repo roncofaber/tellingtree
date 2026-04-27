@@ -1,3 +1,6 @@
+import shutil
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, StaticPool
@@ -25,6 +28,10 @@ def setup_db():
     account_lockout._locked_until.clear()
     yield
     Base.metadata.drop_all(bind=engine)
+    # Remove story content files written to disk during the test
+    story_dir = Path("storage/media/stories")
+    if story_dir.exists():
+        shutil.rmtree(story_dir)
 
 
 @pytest.fixture

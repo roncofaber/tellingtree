@@ -12,6 +12,7 @@ export function listTrees(skip = 0, limit = 20) {
 export function createTree(data: {
   name: string;
   description?: string;
+  icon?: string;
   is_public?: boolean;
 }) {
   return apiClient.post<Tree>("/trees", data);
@@ -23,7 +24,7 @@ export function getTree(treeId: string) {
 
 export function updateTree(
   treeId: string,
-  data: { name?: string; description?: string; is_public?: boolean; slug?: string }
+  data: { name?: string; description?: string; icon?: string | null; is_public?: boolean; slug?: string }
 ) {
   return apiClient.put<Tree>(`/trees/${treeId}`, data);
 }

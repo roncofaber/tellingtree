@@ -44,6 +44,8 @@ class UserResponse(BaseModel):
     is_superadmin: bool = False
     created_at: datetime
     has_avatar: bool = False
+    preferences: dict | None = None
+    last_active_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

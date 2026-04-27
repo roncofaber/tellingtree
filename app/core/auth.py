@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -36,6 +37,15 @@ def get_current_user(
     token_ver = payload.get("ver", 0)
     if token_ver != user.token_version:
         raise UnauthorizedError("Token has been revoked")
+
+    # Stamp last_active_at at most once per 5 minutes to avoid a write on every request
+    now = datetime.now(timezone.utc)
+    last = user.last_active_at
+    if last is not None and last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)  # SQLite returns naive datetimes
+    if last is None or (now - last).total_seconds() > 300:
+        user.last_active_at = now
+        db.commit()
 
     return user
 

@@ -28,6 +28,7 @@ import { TrashTab } from "@/components/tree/TrashTab";
 import { PlacesManageTab } from "@/components/tree/PlacesManageTab";
 
 import { TreeHealthTab } from "@/components/tree/TreeHealthTab";
+import { TreeIconPicker, resolveTreeIcon } from "@/components/tree/TreeIconPicker";
 
 const PREVIEW_DATA: f3.Data = [
   { id: "gf", data: { gender: "M", _gender: "male", "first name": "James", "last name": "Smith", nickname: "", birthday: "1935–2010" }, rels: { spouses: ["gm"], children: ["dad", "aunt"], parents: [] } },
@@ -106,6 +107,20 @@ function rgbToHex(color: string): string {
   return "#" + m.slice(0, 3).map(n => parseInt(n).toString(16).padStart(2, "0")).join("");
 }
 
+async function downloadTreeFile(treeId: string, path: string, filename: string): Promise<void> {
+  const { getAccessToken } = await import("@/api/client");
+  const { API_PREFIX } = await import("@/lib/constants");
+  const token = getAccessToken();
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const resp = await fetch(`${API_PREFIX}/trees/${treeId}/${path}`, { headers, credentials: "include" });
+  if (!resp.ok) throw new Error("Export failed");
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function TreeManagePage() {
   const { treeSlug }  = useParams<{ treeSlug: string }>();
   const navigate      = useNavigate();
@@ -116,6 +131,7 @@ export function TreeManagePage() {
   const [name, setName]           = useState("");
   const [desc, setDesc]           = useState("");
   const [slug, setSlug]           = useState("");
+  const [icon, setIcon]           = useState("TreePine");
   const [editMode, setEditMode]   = useState(false);
 
   // GEDCOM import
@@ -165,8 +181,8 @@ export function TreeManagePage() {
 
   const updateMut = useMutation({
     mutationFn: () => {
-      const payload: { name: string; description?: string; slug?: string } = {
-        name, description: desc || undefined,
+      const payload: { name: string; description?: string; icon?: string; slug?: string } = {
+        name, description: desc || undefined, icon,
       };
       if (slug && slug !== tree?.slug) payload.slug = slug;
       return updateTree(treeId!, payload);
@@ -236,6 +252,7 @@ export function TreeManagePage() {
     setName(tree?.name ?? "");
     setDesc(tree?.description ?? "");
     setSlug(tree?.slug ?? "");
+    setIcon(tree?.icon ?? "TreePine");
     setEditMode(true);
   };
 
@@ -275,31 +292,25 @@ export function TreeManagePage() {
   if (isLoading) return <LoadingSpinner />;
 
   return (
-    <div className="flex flex-col h-full min-h-0 max-w-6xl mx-auto w-full gap-3">
-      {/* Header */}
-      <div className="space-y-1 shrink-0">
-        <PageHeader items={[
-          { label: "Dashboard",          href: "/dashboard" },
-          { label: tree?.name ?? "Tree", href: base },
-          { label: "Settings" },
-        ]} />
-        <h1 className="text-xl font-bold">{tree?.name} — Settings</h1>
-      </div>
+    <div className="flex flex-col h-full min-h-0 gap-3">
+      <PageHeader items={[
+        { label: "Dashboard",          href: "/dashboard" },
+        { label: tree?.name ?? "Tree", href: base },
+        { label: "Settings" },
+      ]} />
 
       <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab") || "general"} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start shrink-0">
-          <TabsTrigger value="general" className="shrink-0">General</TabsTrigger>
-          <TabsTrigger value="health" className="shrink-0">Health</TabsTrigger>
-          <TabsTrigger value="graph" className="shrink-0">Graph</TabsTrigger>
-          <TabsTrigger value="places" className="shrink-0">Places</TabsTrigger>
-
-          <TabsTrigger value="data" className="shrink-0">Data</TabsTrigger>
-          <TabsTrigger value="trash" className="shrink-0">Trash</TabsTrigger>
-          <TabsTrigger value="advanced" className="shrink-0">Advanced</TabsTrigger>
+        <TabsList className="overflow-x-auto flex-nowrap w-full justify-start shrink-0 max-w-6xl mx-auto">
+          <TabsTrigger value="general"    className="shrink-0 sm:flex-1">General</TabsTrigger>
+          <TabsTrigger value="appearance" className="shrink-0 sm:flex-1">Appearance</TabsTrigger>
+          <TabsTrigger value="health"     className="shrink-0 sm:flex-1">Health</TabsTrigger>
+          <TabsTrigger value="places"     className="shrink-0 sm:flex-1">Places</TabsTrigger>
+          <TabsTrigger value="data"       className="shrink-0 sm:flex-1">Data & Trash</TabsTrigger>
         </TabsList>
 
         {/* ── General ── */}
-        <TabsContent value="general" className="space-y-4 mt-4 overflow-auto min-h-0">
+        <TabsContent value="general" className="mt-4 overflow-auto min-h-0">
+          <div className="max-w-6xl mx-auto w-full space-y-4">
           {/* Identity */}
           <Card>
             <CardHeader>
@@ -313,6 +324,7 @@ export function TreeManagePage() {
                 <div className="space-y-4">
                   <div className="space-y-1.5"><Label className="text-xs font-medium">Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
                   <div className="space-y-1.5"><Label className="text-xs font-medium">Description</Label><Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} placeholder="A short description of this tree…" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs font-medium">Icon</Label><TreeIconPicker value={icon} onChange={setIcon} /></div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">URL slug</Label>
                     <Input
@@ -343,6 +355,12 @@ export function TreeManagePage() {
                   <dt className="text-muted-foreground">Description</dt>
                   <dd className={tree?.description ? "" : "text-muted-foreground italic"}>
                     {tree?.description || "No description set"}
+                  </dd>
+
+                  <dt className="text-muted-foreground">Icon</dt>
+                  <dd className="flex items-center gap-2">
+                    {(() => { const I = resolveTreeIcon(tree?.icon ?? null); return <I className="h-4 w-4 text-muted-foreground" />; })()}
+                    <span className="text-muted-foreground text-xs">{tree?.icon ?? "TreePine"}</span>
                   </dd>
                 </dl>
               )}
@@ -446,14 +464,83 @@ export function TreeManagePage() {
             <h2 className="text-base font-semibold mb-3 px-1">Members</h2>
             <MembersTab treeId={treeId!} />
           </div>
+
+          {/* ── Danger zone ─────────────────────────────────────────────── */}
+          <div className="pt-4">
+            <div className="flex items-center gap-3 mb-3 px-1">
+              <div className="h-px flex-1 bg-destructive/20" />
+              <span className="text-xs font-semibold uppercase tracking-widest text-destructive/60">Danger zone</span>
+              <div className="h-px flex-1 bg-destructive/20" />
+            </div>
+            <div className="space-y-3">
+              {isOwner && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Transfer ownership</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Hand this tree over to another member. After transfer you'll lose access unless the new owner re-invites you.
+                      Required before deleting your account if you own trees.
+                    </p>
+                    {transferableMembers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground italic">
+                        No other members to transfer to. Invite a member first from the Members section above.
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Select
+                          value={transferTargetId || undefined}
+                          onValueChange={(v) => { if (v !== null) setTransferTargetId(v); }}
+                        >
+                          <SelectTrigger className="w-full sm:w-64 h-9">
+                            <SelectValue placeholder="Select new owner…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {transferableMembers.map(m => (
+                              <SelectItem key={m.user_id} value={m.user_id}>
+                                {m.username || m.user_id.slice(0, 8)} <span className="text-xs text-muted-foreground">({m.role})</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!transferTargetId || transferMut.isPending}
+                          onClick={() => setConfirmTransfer(true)}
+                        >
+                          Transfer ownership
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="border-destructive/40">
+                <CardHeader><CardTitle className="text-base text-destructive">Delete tree</CardTitle></CardHeader>
+                <CardContent className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Permanently delete this tree and all its data. This cannot be undone.
+                  </p>
+                  <Button variant="destructive" size="sm" className="shrink-0 ml-4" onClick={() => setDeleteOpen(true)}>Delete tree</Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="health" className="mt-4 overflow-auto min-h-0">
-          <TreeHealthTab treeId={treeId!} />
+          <div className="max-w-6xl mx-auto w-full">
+            <TreeHealthTab treeId={treeId!} />
+          </div>
         </TabsContent>
 
-        {/* ── Graph ── */}
-        <TabsContent value="graph" className="space-y-4 mt-4 overflow-auto min-h-0">
+        {/* ── Appearance ── */}
+        <TabsContent value="appearance" className="mt-4 overflow-auto min-h-0">
+          <div className="max-w-6xl mx-auto w-full space-y-4">
           <Card>
             <CardContent className="pt-5 space-y-5">
               {(() => {
@@ -620,10 +707,12 @@ export function TreeManagePage() {
               <GraphPreview style={getResolvedStyle(graphSettings)} layout={getResolvedLayout(graphSettings)} />
             </CardContent>
           </Card>
+          </div>
         </TabsContent>
 
-        {/* ── Data ── */}
-        <TabsContent value="places" className="mt-4 space-y-4 overflow-auto min-h-0">
+        {/* ── Places ── */}
+        <TabsContent value="places" className="mt-4 overflow-auto min-h-0">
+          <div className="max-w-6xl mx-auto w-full space-y-4">
           <Card>
             <CardHeader><CardTitle className="text-base">Reset geocoding</CardTitle></CardHeader>
             <CardContent className="space-y-3">
@@ -641,99 +730,52 @@ export function TreeManagePage() {
             </CardContent>
           </Card>
           <PlacesManageTab treeId={treeId!} />
+          </div>
         </TabsContent>
 
-        <TabsContent value="data" className="space-y-4 mt-4 overflow-auto min-h-0">
+        <TabsContent value="data" className="mt-4 overflow-auto min-h-0">
+          <div className="max-w-6xl mx-auto w-full space-y-4">
           <Card>
             <CardHeader><CardTitle className="text-base">GEDCOM</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">
                 Import or export GEDCOM 5.5.1 files compatible with Gramps, Ancestry, Heredis, and other genealogy software.
+                The export includes people, families, stories as notes, and media references.
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => { resetImport(); setImportOpen(true); }}>Import…</Button>
                 <Button variant="outline" onClick={async () => {
                   try {
-                    const { getAccessToken } = await import("@/api/client");
-                    const { API_PREFIX } = await import("@/lib/constants");
-                    const headers: Record<string, string> = {};
-                    const token = getAccessToken();
-                    if (token) headers["Authorization"] = `Bearer ${token}`;
-                    const resp = await fetch(`${API_PREFIX}/trees/${treeId}/export/gedcom`, { headers, credentials: "include" });
-                    if (!resp.ok) throw new Error("Export failed");
-                    const blob = await resp.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url; a.download = `tree-${treeId}.ged`;
-                    a.click(); URL.revokeObjectURL(url);
+                    await downloadTreeFile(treeId!, `export/gedcom`, `${treeSlug}.ged`);
                     toast.success("GEDCOM exported");
                   } catch (e) { toast.error(e instanceof Error ? e.message : "Export failed"); }
                 }}>Export .ged</Button>
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        {/* ── Trash ── */}
-        <TabsContent value="trash" className="mt-4 overflow-auto min-h-0">
-          <TrashTab treeId={treeId!} />
-        </TabsContent>
-
-        {/* ── Advanced ── */}
-        <TabsContent value="advanced" className="space-y-4 mt-4 overflow-auto min-h-0">
-          {isOwner && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Transfer ownership</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Hand this tree over to another member. After transfer you'll lose access unless the new owner re-invites you. Required before deleting your account if you own trees.
-                </p>
-                {transferableMembers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">
-                    No other members to transfer to. Invite a member first from the Members tab.
-                  </p>
-                ) : (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Select
-                      value={transferTargetId || undefined}
-                      onValueChange={(v) => { if (v !== null) setTransferTargetId(v); }}
-                    >
-                      <SelectTrigger className="w-full sm:w-64 h-9">
-                        <SelectValue placeholder="Select new owner…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {transferableMembers.map(m => (
-                          <SelectItem key={m.user_id} value={m.user_id}>
-                            {m.username || m.user_id.slice(0, 8)} <span className="text-xs text-muted-foreground">({m.role})</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!transferTargetId || transferMut.isPending}
-                      onClick={() => setConfirmTransfer(true)}
-                    >
-                      Transfer ownership
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="border-destructive/40">
-            <CardHeader><CardTitle className="text-base text-destructive">Danger zone</CardTitle></CardHeader>
-            <CardContent className="flex items-center justify-between">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Full Backup</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Permanently delete this tree and all its data.
+                Download a complete backup as a ZIP archive: all people, relationships, stories, tags,
+                media files, and a GEDCOM file. Use this to restore or migrate your tree.
               </p>
-              <Button variant="destructive" size="sm" className="shrink-0 ml-4" onClick={() => setDeleteOpen(true)}>Delete tree</Button>
+              <Button variant="outline" onClick={async () => {
+                try {
+                  await downloadTreeFile(treeId!, `export/zip`, `${treeSlug}-backup.zip`);
+                  toast.success("Backup downloaded");
+                } catch (e) { toast.error(e instanceof Error ? e.message : "Backup failed"); }
+              }}>Download backup (.zip)</Button>
             </CardContent>
           </Card>
+
+          {/* Trash */}
+          <div>
+            <h2 className="text-base font-semibold mb-3 px-1">Trash</h2>
+            <TrashTab treeId={treeId!} />
+          </div>
+          </div>
         </TabsContent>
       </Tabs>
 

@@ -293,7 +293,7 @@ export function MembersTab({ treeId }: Props) {
               setInviteLink(link);
               await navigator.clipboard.writeText(link);
               toast.success("Invite link copied to clipboard");
-            } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
+            } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to generate invite link"); }
           }}>
             Generate link
           </Button>
